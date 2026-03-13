@@ -29,7 +29,13 @@ func SessionAlive(name string) bool {
 	return err == nil
 }
 
-// Create launches a new detached abduco session.
+// InsideSession returns true if we're already running inside an abduco session.
+func InsideSession() bool {
+	return os.Getenv("ABDUCO_SESSION") != "" || os.Getenv("GMUX_ABDUCO_NAME") != ""
+}
+
+// Create launches a new detached abduco session using race-safe abduco -n.
+// abduco -n atomically fails if the socket already exists.
 // Returns the PID of the abduco server process.
 func Create(name string, command []string, cwd string, extraEnv []string) (int, error) {
 	abducoPath, err := exec.LookPath("abduco")
@@ -42,14 +48,18 @@ func Create(name string, command []string, cwd string, extraEnv []string) (int, 
 	cmd.Dir = cwd
 	cmd.Env = append(os.Environ(), extraEnv...)
 
-	// abduco -n forks a server and the client returns immediately.
-	// We need to capture the server PID from the process list after.
 	if err := cmd.Run(); err != nil {
 		return 0, fmt.Errorf("abduco create failed: %w", err)
 	}
 
-	// Give the server a moment to start
-	time.Sleep(50 * time.Millisecond)
+	// Wait for socket to appear (up to 500ms)
+	sock := SocketPath(name)
+	for i := 0; i < 50; i++ {
+		if _, err := os.Stat(sock); err == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 
 	pid := findAbducoPid(name)
 	return pid, nil

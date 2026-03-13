@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -33,6 +34,16 @@ func main() {
 		}
 	}
 
+	// Nesting guard: if already inside abduco, run directly
+	if abduco.InsideSession() {
+		log.Println("already inside abduco session, executing directly")
+		binary, err := exec.LookPath(args[0])
+		if err != nil {
+			log.Fatalf("command not found: %s", args[0])
+		}
+		syscall.Exec(binary, args, os.Environ())
+	}
+
 	workDir := *cwd
 	if workDir == "" {
 		var err error
@@ -42,7 +53,8 @@ func main() {
 		}
 	}
 
-	abducoName := naming.AbducoName(*kind, workDir)
+	// Sequential naming: pi:project:1, pi:project:2, ...
+	abducoName := naming.AbducoName(*kind, workDir, abduco.SessionAlive)
 	sessionID := naming.SessionID()
 
 	sessionTitle := *title
@@ -60,7 +72,7 @@ func main() {
 	fmt.Printf("abduco:  %s\n", abducoName)
 	fmt.Printf("command: %s\n", strings.Join(args, " "))
 
-	// Create detached abduco session
+	// Create detached abduco session (race-safe via abduco -n)
 	pid, err := abduco.Create(abducoName, args, workDir, []string{
 		"GMUX_SESSION_ID=" + sessionID,
 		"GMUX_ABDUCO_NAME=" + abducoName,
@@ -84,7 +96,7 @@ func main() {
 		close(stop)
 	}()
 
-	// Monitor: wait for abduco session to disappear
+	// Monitor: wait for abduco session socket to disappear
 	abduco.WaitForExit(abducoName, 1*time.Second, stop)
 
 	meta.SetExited(0)

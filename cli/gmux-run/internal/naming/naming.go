@@ -7,15 +7,23 @@ import (
 	"strings"
 )
 
-// AbducoName generates a deterministic-ish abduco session name.
-// Format: <kind>:<project>:<random-suffix>
-func AbducoName(kind, cwd string) string {
+// AbducoName generates a sequential abduco session name.
+// Format: <kind>:<project>:<N>
+// Caller must provide a function to check if a name is taken (socket exists).
+func AbducoName(kind, cwd string, taken func(string) bool) string {
 	project := filepath.Base(cwd)
-	// sanitize for abduco (no slashes, colons in project)
 	project = strings.ReplaceAll(project, ":", "-")
 	project = strings.ReplaceAll(project, "/", "-")
-	suffix := shortID()
-	return fmt.Sprintf("%s:%s:%s", kind, project, suffix)
+
+	for n := 1; n <= 100; n++ {
+		name := fmt.Sprintf("%s:%s:%d", kind, project, n)
+		if !taken(name) {
+			return name
+		}
+	}
+
+	// Fallback to random if 100 sequential names exhausted
+	return fmt.Sprintf("%s:%s:%s", kind, project, shortID())
 }
 
 // SessionID generates a unique session identifier.
