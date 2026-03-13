@@ -7,12 +7,19 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/gmuxapp/gmux/services/gmuxd/internal/discovery"
 	"github.com/gmuxapp/gmux/services/gmuxd/internal/store"
 )
 
 func main() {
-	sessions := store.NewWithSeeds()
+	sessions := store.New()
+
+	// Start metadata discovery from gmux-run
+	stopDiscovery := make(chan struct{})
+	go discovery.Watch(sessions, 2*time.Second, stopDiscovery)
+	defer close(stopDiscovery)
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/v1/health", func(w http.ResponseWriter, r *http.Request) {
