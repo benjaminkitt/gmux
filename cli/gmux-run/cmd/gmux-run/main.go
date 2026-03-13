@@ -5,15 +5,14 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 
-	"github.com/gmuxapp/gmux/cli/gmux-run/internal/abduco"
 	"github.com/gmuxapp/gmux/cli/gmux-run/internal/metadata"
 	"github.com/gmuxapp/gmux/cli/gmux-run/internal/naming"
+	"github.com/gmuxapp/gmux/cli/gmux-run/internal/ptyserver"
 )
 
 func main() {
@@ -34,16 +33,6 @@ func main() {
 		}
 	}
 
-	// Nesting guard: if already inside abduco, run directly
-	if abduco.InsideSession() {
-		log.Println("already inside abduco session, executing directly")
-		binary, err := exec.LookPath(args[0])
-		if err != nil {
-			log.Fatalf("command not found: %s", args[0])
-		}
-		syscall.Exec(binary, args, os.Environ())
-	}
-
 	workDir := *cwd
 	if workDir == "" {
 		var err error
@@ -53,52 +42,60 @@ func main() {
 		}
 	}
 
-	// Sequential naming: pi:project:1, pi:project:2, ...
-	abducoName := naming.AbducoName(*kind, workDir, abduco.SessionAlive)
 	sessionID := naming.SessionID()
+	sockPath := filepath.Join("/tmp/gmux-sessions", sessionID+".sock")
+
+	// Socket existence check for sequential naming (kept for metadata naming)
+	sessionName := *kind + ":" + filepath.Base(workDir)
 
 	sessionTitle := *title
 	if sessionTitle == "" {
 		sessionTitle = strings.Join(args, " ")
 	}
 
-	// Write initial metadata (starting state)
-	meta := metadata.New(sessionID, abducoName, *kind, workDir, args)
+	// Write initial metadata
+	meta := metadata.New(sessionID, sessionName, *kind, workDir, args)
+	meta.SocketPath = sockPath
 	if err := meta.Write(); err != nil {
 		log.Fatalf("failed to write metadata: %v", err)
 	}
 
 	fmt.Printf("session: %s\n", sessionID)
-	fmt.Printf("abduco:  %s\n", abducoName)
 	fmt.Printf("command: %s\n", strings.Join(args, " "))
 
-	// Create detached abduco session (race-safe via abduco -n)
-	pid, err := abduco.Create(abducoName, args, workDir, []string{
-		"GMUX_SESSION_ID=" + sessionID,
-		"GMUX_ABDUCO_NAME=" + abducoName,
+	// Start PTY server
+	srv, err := ptyserver.New(ptyserver.Config{
+		Command:    args,
+		Cwd:        workDir,
+		Env: []string{
+			"GMUX_SESSION_ID=" + sessionID,
+		},
+		SocketPath: sockPath,
 	})
 	if err != nil {
 		meta.SetError(fmt.Sprintf("failed to start: %v", err))
-		log.Fatalf("failed to create abduco session: %v", err)
+		log.Fatalf("failed to start: %v", err)
 	}
 
-	meta.SetRunning(pid)
-	fmt.Printf("pid:     %d\n", pid)
-	fmt.Printf("socket:  %s\n", abduco.SocketPath(abducoName))
-	fmt.Println("monitoring session...")
+	meta.SetRunning(srv.Pid())
+	fmt.Printf("pid:     %d\n", srv.Pid())
+	fmt.Printf("socket:  %s\n", srv.SocketPath())
+	fmt.Println("serving...")
 
 	// Handle signals — clean shutdown
-	stop := make(chan struct{})
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigCh
-		close(stop)
-	}()
 
-	// Monitor: wait for abduco session socket to disappear
-	abduco.WaitForExit(abducoName, 1*time.Second, stop)
+	select {
+	case <-srv.Done():
+		// Child exited
+	case sig := <-sigCh:
+		fmt.Printf("\nreceived %v, shutting down...\n", sig)
+		srv.Shutdown()
+	}
 
-	meta.SetExited(0)
-	fmt.Println("session ended")
+	exitCode := srv.ExitCode()
+	meta.SetExited(exitCode)
+	fmt.Printf("exited:  %d\n", exitCode)
+	os.Exit(exitCode)
 }

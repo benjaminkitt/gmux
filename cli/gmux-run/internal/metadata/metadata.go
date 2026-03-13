@@ -24,6 +24,9 @@ type SessionMeta struct {
 	ExitCode   *int     `json:"exit_code,omitempty"`
 	Error      string   `json:"error,omitempty"`
 
+	// Transport
+	SocketPath string `json:"socket_path,omitempty"`
+
 	// pi-specific
 	SessionFile       string `json:"session_file,omitempty"`
 	SessionFileExists bool   `json:"session_file_exists,omitempty"`
