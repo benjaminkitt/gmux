@@ -2,14 +2,22 @@ language: javascript
 
 tasks:
   dev:
-    command: vite
+    command: pnpm exec vite
+    deps:
+      - protocol:build
   build:
-    command: vite build
+    command: pnpm exec vite build
+    deps:
+      - protocol:build
     inputs:
       - "src/**/*"
       - "index.html"
       - "vite.config.ts"
   test:
-    command: vitest run
+    command: pnpm exec vitest run --passWithNoTests
+    deps:
+      - protocol:build
   lint:
-    command: tsc --noEmit
+    command: pnpm exec tsc --noEmit
+    deps:
+      - protocol:build
