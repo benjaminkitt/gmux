@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -15,7 +16,9 @@ import (
 	"syscall"
 
 	"github.com/creack/pty"
+	"github.com/gmuxapp/gmux/cli/gmux-run/internal/adapter"
 	"github.com/gmuxapp/gmux/cli/gmux-run/internal/ringbuf"
+	"github.com/gmuxapp/gmux/cli/gmux-run/internal/session"
 	"nhooyr.io/websocket"
 )
 
@@ -35,6 +38,8 @@ type Server struct {
 	sockPath   string
 	listener   net.Listener
 	scrollback *ringbuf.RingBuf
+	adapter    adapter.Adapter
+	state      *session.State
 
 	mu      sync.Mutex
 	clients map[*wsClient]struct{}
@@ -59,6 +64,8 @@ type Config struct {
 	Cols           uint16
 	Rows           uint16
 	ScrollbackSize int // bytes, 0 = default (128KB)
+	Adapter        adapter.Adapter
+	State          *session.State
 }
 
 // New creates and starts a PTY server.
@@ -107,6 +114,8 @@ func New(cfg Config) (*Server, error) {
 		sockPath:   cfg.SocketPath,
 		listener:   listener,
 		scrollback: ringbuf.New(scrollbackSize),
+		adapter:    cfg.Adapter,
+		state:      cfg.State,
 		clients:    make(map[*wsClient]struct{}),
 		done:       make(chan struct{}),
 	}
@@ -162,10 +171,115 @@ func (s *Server) Shutdown() {
 
 func (s *Server) serve() {
 	mux := http.NewServeMux()
+
+	// HTTP endpoints (checked first via explicit paths)
+	mux.HandleFunc("GET /meta", s.handleMeta)
+	mux.HandleFunc("PUT /status", s.handlePutStatus)
+	mux.HandleFunc("PATCH /meta", s.handlePatchMeta)
+	mux.HandleFunc("GET /events", s.handleEvents)
+
+	// WebSocket terminal attach (fallback for / with Upgrade header)
 	mux.HandleFunc("/", s.handleWS)
 
 	server := &http.Server{Handler: mux}
 	server.Serve(s.listener)
+}
+
+func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
+	data, err := s.state.JSON()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
+}
+
+func (s *Server) handlePutStatus(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, 4096))
+	if err != nil {
+		http.Error(w, "read error", http.StatusBadRequest)
+		return
+	}
+
+	// "null" clears the status
+	if string(body) == "null" {
+		s.state.SetStatus(nil)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	var status adapter.Status
+	if err := json.Unmarshal(body, &status); err != nil {
+		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Validate state
+	switch status.State {
+	case "active", "attention", "success", "error", "paused", "info":
+		// ok
+	default:
+		http.Error(w, "invalid state: must be active|attention|success|error|paused|info", http.StatusBadRequest)
+		return
+	}
+
+	s.state.SetStatus(&status)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handlePatchMeta(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, 4096))
+	if err != nil {
+		http.Error(w, "read error", http.StatusBadRequest)
+		return
+	}
+
+	var patch struct {
+		Title    *string `json:"title"`
+		Subtitle *string `json:"subtitle"`
+	}
+	if err := json.Unmarshal(body, &patch); err != nil {
+		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	s.state.PatchMeta(patch.Title, patch.Subtitle)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	ch := s.state.Subscribe()
+	defer s.state.Unsubscribe(ch)
+
+	flusher.Flush()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case evt, ok := <-ch:
+			if !ok {
+				return
+			}
+			data, err := json.Marshal(evt.Data)
+			if err != nil {
+				continue
+			}
+			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", evt.Type, data)
+			flusher.Flush()
+		}
+	}
 }
 
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
@@ -254,6 +368,14 @@ func (s *Server) readPTY() {
 		n, err := s.ptmx.Read(buf)
 		if n > 0 {
 			data := buf[:n]
+
+			// Feed adapter monitor (cheap, no alloc expected)
+			if s.adapter != nil {
+				if status := s.adapter.Monitor(data); status != nil {
+					s.state.SetStatus(status)
+				}
+			}
+
 			// Store in scrollback (under lock with broadcast to avoid gaps)
 			s.mu.Lock()
 			s.scrollback.Write(data)
