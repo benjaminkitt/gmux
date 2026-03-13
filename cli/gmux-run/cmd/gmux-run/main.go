@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
+	"github.com/gmuxapp/gmux/cli/gmux-run/internal/abduco"
 	"github.com/gmuxapp/gmux/cli/gmux-run/internal/metadata"
 	"github.com/gmuxapp/gmux/cli/gmux-run/internal/naming"
 )
@@ -25,7 +26,6 @@ func main() {
 
 	args := flag.Args()
 	if len(args) == 0 {
-		// Default to adapter name as command for pi/opencode
 		if *kind == "pi" {
 			args = []string{"pi"}
 		} else {
@@ -50,17 +50,8 @@ func main() {
 		sessionTitle = strings.Join(args, " ")
 	}
 
-	// Build full command: abduco -n <name> <cmd...>
-	abducoArgs := append([]string{"-n", abducoName}, args...)
-
-	abducoPath, err := exec.LookPath("abduco")
-	if err != nil {
-		log.Fatalf("abduco not found in PATH: %v", err)
-	}
-
-	// Write initial metadata
+	// Write initial metadata (starting state)
 	meta := metadata.New(sessionID, abducoName, *kind, workDir, args)
-	meta.SessionFile = "" // filled by adapter if relevant
 	if err := meta.Write(); err != nil {
 		log.Fatalf("failed to write metadata: %v", err)
 	}
@@ -69,49 +60,33 @@ func main() {
 	fmt.Printf("abduco:  %s\n", abducoName)
 	fmt.Printf("command: %s\n", strings.Join(args, " "))
 
-	// Launch abduco
-	cmd := exec.Command(abducoPath, abducoArgs...)
-	cmd.Dir = workDir
-	cmd.Env = append(os.Environ(),
-		"GMUX_SESSION_ID="+sessionID,
-		"GMUX_ABDUCO_NAME="+abducoName,
-	)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Start(); err != nil {
+	// Create detached abduco session
+	pid, err := abduco.Create(abducoName, args, workDir, []string{
+		"GMUX_SESSION_ID=" + sessionID,
+		"GMUX_ABDUCO_NAME=" + abducoName,
+	})
+	if err != nil {
 		meta.SetError(fmt.Sprintf("failed to start: %v", err))
-		log.Fatalf("failed to start abduco: %v", err)
+		log.Fatalf("failed to create abduco session: %v", err)
 	}
 
-	meta.SetRunning(cmd.Process.Pid)
+	meta.SetRunning(pid)
+	fmt.Printf("pid:     %d\n", pid)
+	fmt.Printf("socket:  %s\n", abduco.SocketPath(abducoName))
+	fmt.Println("monitoring session...")
 
-	// Forward signals
+	// Handle signals — clean shutdown
+	stop := make(chan struct{})
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
-		sig := <-sigCh
-		if cmd.Process != nil {
-			cmd.Process.Signal(sig)
-		}
+		<-sigCh
+		close(stop)
 	}()
 
-	// Wait for exit
-	err = cmd.Wait()
-	exitCode := 0
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		} else {
-			meta.SetError(fmt.Sprintf("wait error: %v", err))
-			meta.Cleanup()
-			os.Exit(1)
-		}
-	}
+	// Monitor: wait for abduco session to disappear
+	abduco.WaitForExit(abducoName, 1*time.Second, stop)
 
-	meta.SetExited(exitCode)
-	// Leave metadata for gmuxd to discover; it handles cleanup policy
-	fmt.Printf("exited:  %d\n", exitCode)
-	os.Exit(exitCode)
+	meta.SetExited(0)
+	fmt.Println("session ended")
 }
