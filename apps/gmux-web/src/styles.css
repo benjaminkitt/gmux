@@ -544,6 +544,11 @@ body {
   padding: 6px;
 }
 
+/* Hide xterm's native scrollbar — scrollback is handled by the PTY replay buffer */
+.terminal-container .xterm-viewport {
+  overflow-y: hidden !important;
+}
+
 /* ── Empty State ── */
 
 .state-message {

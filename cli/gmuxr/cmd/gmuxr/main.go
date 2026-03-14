@@ -16,6 +16,7 @@ import (
 
 	"github.com/gmuxapp/gmux/cli/gmuxr/internal/adapter"
 	"github.com/gmuxapp/gmux/cli/gmuxr/internal/adapter/adapters"
+	"github.com/gmuxapp/gmux/cli/gmuxr/internal/localterm"
 	"github.com/gmuxapp/gmux/cli/gmuxr/internal/naming"
 	"github.com/gmuxapp/gmux/cli/gmuxr/internal/ptyserver"
 	"github.com/gmuxapp/gmux/cli/gmuxr/internal/session"
@@ -107,43 +108,101 @@ func main() {
 	}
 	env = append(env, adapterEnv...)
 
-	fmt.Printf("session:  %s\n", sessionID)
-	fmt.Printf("adapter:  %s\n", a.Name())
-	fmt.Printf("command:  %s\n", strings.Join(preparedCmd, " "))
+	interactive := localterm.IsInteractive()
 
-	// Start PTY server
-	srv, err := ptyserver.New(ptyserver.Config{
+	// Determine initial PTY size — use terminal size if interactive
+	ptyCfg := ptyserver.Config{
 		Command:    preparedCmd,
 		Cwd:        workDir,
 		Env:        env,
 		SocketPath: sockPath,
 		Adapter:    a,
 		State:      state,
-	})
+	}
+	if interactive {
+		if cols, rows, err := localterm.TerminalSize(); err == nil {
+			ptyCfg.Cols = cols
+			ptyCfg.Rows = rows
+		}
+	}
+
+	if !interactive {
+		fmt.Printf("session:  %s\n", sessionID)
+		fmt.Printf("adapter:  %s\n", a.Name())
+		fmt.Printf("command:  %s\n", strings.Join(preparedCmd, " "))
+	}
+
+	// Start PTY server
+	srv, err := ptyserver.New(ptyCfg)
 	if err != nil {
 		log.Fatalf("failed to start: %v", err)
 	}
 
 	state.SetRunning(srv.Pid())
-	fmt.Printf("pid:      %d\n", srv.Pid())
-	fmt.Printf("socket:   %s\n", srv.SocketPath())
-	fmt.Println("serving...")
+
+	if !interactive {
+		fmt.Printf("pid:      %d\n", srv.Pid())
+		fmt.Printf("socket:   %s\n", srv.SocketPath())
+		fmt.Println("serving...")
+	}
 
 	// Register with gmuxd (best-effort, non-blocking)
 	go registerWithGmuxd(sessionID, sockPath)
 
+	if interactive {
+		// Transparent mode: attach local terminal to the PTY
+		attach, err := localterm.New(localterm.Config{
+			PTYWriter: ptyWriterFunc(func(p []byte) (int, error) {
+				return srv.WritePTY(p)
+			}),
+			ResizeFn: srv.Resize,
+		})
+		if err != nil {
+			log.Fatalf("failed to attach terminal: %v", err)
+		}
+		srv.SetLocalOutput(attach)
 
+		// In interactive mode:
+		// - SIGHUP → detach local terminal, keep session running
+		// - SIGINT/SIGTERM are consumed by raw mode and forwarded to child via PTY
+		//   (but we still catch them on gmuxr in case raw mode is somehow bypassed)
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)
 
-	// Handle signals — clean shutdown
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		select {
+		case <-srv.Done():
+			// Child exited — detach and exit
+			attach.Detach()
+		case <-attach.Done():
+			// Local terminal gone (stdin closed) — session continues headless
+			srv.SetLocalOutput(nil)
+			// Wait for child to exit (session persists, accessible via web UI)
+			<-srv.Done()
+		case sig := <-sigCh:
+			if sig == syscall.SIGHUP {
+				// Terminal closed — detach, keep session alive
+				attach.Detach()
+				srv.SetLocalOutput(nil)
+				// Continue running headless until child exits
+				<-srv.Done()
+			} else {
+				// SIGINT/SIGTERM — clean shutdown
+				attach.Detach()
+				srv.Shutdown()
+			}
+		}
+	} else {
+		// Non-interactive: original behavior
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
-	select {
-	case <-srv.Done():
-		// Child exited
-	case sig := <-sigCh:
-		fmt.Printf("\nreceived %v, shutting down...\n", sig)
-		srv.Shutdown()
+		select {
+		case <-srv.Done():
+			// Child exited
+		case sig := <-sigCh:
+			fmt.Printf("\nreceived %v, shutting down...\n", sig)
+			srv.Shutdown()
+		}
 	}
 
 	exitCode := srv.ExitCode()
@@ -152,7 +211,9 @@ func main() {
 	// Deregister from gmuxd (best-effort)
 	deregisterFromGmuxd(sessionID)
 
-	fmt.Printf("exited:   %d\n", exitCode)
+	if !interactive {
+		fmt.Printf("exited:   %d\n", exitCode)
+	}
 	os.Exit(exitCode)
 }
 
@@ -179,12 +240,15 @@ func registerWithGmuxd(sessionID, socketPath string) {
 		}
 		resp.Body.Close()
 		if resp.StatusCode == 200 {
-			log.Printf("registered with gmuxd")
 			return
 		}
 	}
-	log.Printf("could not register with gmuxd (will be discovered via socket scan)")
 }
+
+// ptyWriterFunc is an adapter to use a function as an io.Writer.
+type ptyWriterFunc func([]byte) (int, error)
+
+func (f ptyWriterFunc) Write(p []byte) (int, error) { return f(p) }
 
 func deregisterFromGmuxd(sessionID string) {
 	gmuxdAddr := os.Getenv("GMUXD_ADDR")
