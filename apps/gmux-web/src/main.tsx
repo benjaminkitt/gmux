@@ -218,26 +218,26 @@ function LaunchButton({ cwd, className }: { cwd?: string; className?: string }) 
 }
 
 const TERM_THEME = {
-  background: '#1f2330',   // oklch(13% 0.015 250)
-  foreground: '#d5dae6',   // oklch(88% 0.01 250)
-  cursor: '#d5dae6',
-  cursorAccent: '#1f2330',
-  selectionBackground: '#3a4259cc',
-  black: '#2e3447',
+  background: '#0f141a',            // --bg-surface
+  foreground: '#d3d8de',            // --text
+  cursor: '#d3d8de',                // --text
+  cursorAccent: '#0f141a',          // --bg-surface
+  selectionBackground: '#141b24cc', // --bg-selected + alpha
+  black: '#151b21',                 // --border
   red: '#c25d66',
   green: '#a3be8c',
   yellow: '#ebcb8b',
   blue: '#81a1c1',
   magenta: '#b48ead',
-  cyan: '#88c0d0',
-  white: '#d5dae6',
-  brightBlack: '#4c566a',
-  brightRed: '#c25d66',
-  brightGreen: '#a3be8c',
-  brightYellow: '#ebcb8b',
-  brightBlue: '#81a1c1',
-  brightMagenta: '#b48ead',
-  brightCyan: '#8fbcbb',
+  cyan: '#49b8b8',                  // --accent
+  white: '#d3d8de',                 // --text
+  brightBlack: '#595e63',           // --text-muted
+  brightRed: '#d06c75',
+  brightGreen: '#b4d19a',
+  brightYellow: '#f0d9a0',
+  brightBlue: '#93b3d1',
+  brightMagenta: '#c9a3c4',
+  brightCyan: '#5fcece',
   brightWhite: '#eceff4',
 }
 
@@ -480,6 +480,20 @@ function SessionDetail({ session }: { session: Session }) {
  * Auto-reconnect on WS drop with exponential backoff.
  * No AttachAddon — we wire onmessage/onData manually so we can reconnect.
  */
+/** Send current terminal dimensions over WebSocket (including pixel size for image protocols). */
+function sendResize(ws: WebSocket | null, fit: FitAddon | null, term: Terminal | null) {
+  if (!fit || !term || !ws || ws.readyState !== WebSocket.OPEN) return
+  const dims = fit.proposeDimensions()
+  if (!dims) return
+  const msg: Record<string, unknown> = { type: 'resize', cols: dims.cols, rows: dims.rows }
+  const el = term.element
+  if (el) {
+    msg.pixelWidth = el.clientWidth
+    msg.pixelHeight = el.clientHeight
+  }
+  ws.send(JSON.stringify(msg))
+}
+
 function TerminalView({ sessionId }: { sessionId: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
@@ -499,7 +513,7 @@ function TerminalView({ sessionId }: { sessionId: string }) {
 
     const term = new Terminal({
       theme: TERM_THEME,
-      fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+      fontFamily: "'Fira Code', monospace",
       fontSize: 14,
       cursorBlink: true,
     })
@@ -537,22 +551,9 @@ function TerminalView({ sessionId }: { sessionId: string }) {
     window.addEventListener('keydown', handleGlobalKeydown, true)
 
     // Window resize → fit + send dims (including pixel size for image protocols)
-    const sendResize = () => {
-      const ws = wsRef.current
-      const dims = fitAddon.proposeDimensions()
-      if (dims && ws && ws.readyState === WebSocket.OPEN) {
-        const el = term.element
-        const msg: Record<string, unknown> = { type: 'resize', cols: dims.cols, rows: dims.rows }
-        if (el) {
-          msg.pixelWidth = el.clientWidth
-          msg.pixelHeight = el.clientHeight
-        }
-        ws.send(JSON.stringify(msg))
-      }
-    }
     const onResize = () => {
       fitAddon.fit()
-      sendResize()
+      sendResize(wsRef.current, fitRef.current, termRef.current)
     }
     window.addEventListener('resize', onResize)
 
@@ -575,7 +576,6 @@ function TerminalView({ sessionId }: { sessionId: string }) {
     if (!termRef.current || USE_MOCK) return
 
     const term = termRef.current
-    const fitAddon = fitRef.current
     let attempt = 0
     let intentionalClose = false
 
@@ -605,7 +605,7 @@ function TerminalView({ sessionId }: { sessionId: string }) {
 
       ws.onopen = () => {
         attempt = 0
-        sendResize()
+        sendResize(ws, fitRef.current, termRef.current)
       }
 
       // WS data → terminal

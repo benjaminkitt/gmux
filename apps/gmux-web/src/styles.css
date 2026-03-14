@@ -1,7 +1,7 @@
 /* gmux — session orchestration UI
    Dark, minimal, clean — aligned with gmux.dev landing page */
 
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:ital,wght@1,400;1,500&family=Source+Sans+3:wght@400;500;600&display=swap');
 
 :root {
   /* Surfaces */
@@ -537,16 +537,34 @@ body {
   flex: 1;
   position: relative;
   overflow: hidden;
+  background: #0f141a; /* match TERM_THEME.background (--bg-surface) */
+}
+
+/* Use JetBrains Mono for italic glyphs since Fira Code has no italic variant */
+@font-face {
+  font-family: 'Fira Code';
+  font-style: italic;
+  font-weight: 400;
+  src: local('JetBrains Mono Italic'), local('JetBrainsMono-Italic');
+}
+@font-face {
+  font-family: 'Fira Code';
+  font-style: italic;
+  font-weight: 500;
+  src: local('JetBrains Mono Medium Italic'), local('JetBrainsMono-MediumItalic');
 }
 
 .terminal-container .xterm {
   height: 100%;
   padding: 6px;
+  margin: 0 auto; /* center the character grid horizontally */
 }
 
 /* Hide xterm's native scrollbar — scrollback is handled by the PTY replay buffer */
+/* Override viewport background — xterm sets it to black inline before theme applies */
 .terminal-container .xterm-viewport {
   overflow-y: hidden !important;
+  background-color: transparent !important;
 }
 
 /* ── Empty State ── */
