@@ -69,9 +69,8 @@ func main() {
 	registry.SetFallback(adapters.Fallback())
 	a := registry.Resolve(args)
 
-	// Let adapter prepare the command and env
-	preparedCmd, adapterEnv := a.Prepare(adapter.PrepareContext{
-		Command:    args,
+	// Get adapter-specific env vars
+	adapterEnv := a.Env(adapter.EnvContext{
 		Cwd:        workDir,
 		SessionID:  sessionID,
 		SocketPath: sockPath,
@@ -112,7 +111,7 @@ func main() {
 
 	// Determine initial PTY size — use terminal size if interactive
 	ptyCfg := ptyserver.Config{
-		Command:    preparedCmd,
+		Command:    args,
 		Cwd:        workDir,
 		Env:        env,
 		SocketPath: sockPath,
@@ -129,7 +128,7 @@ func main() {
 	if !interactive {
 		fmt.Printf("session:  %s\n", sessionID)
 		fmt.Printf("adapter:  %s\n", a.Name())
-		fmt.Printf("command:  %s\n", strings.Join(preparedCmd, " "))
+		fmt.Printf("command:  %s\n", strings.Join(args, " "))
 	}
 
 	// Start PTY server

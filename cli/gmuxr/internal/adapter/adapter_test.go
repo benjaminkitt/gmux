@@ -12,10 +12,10 @@ type testAdapter struct {
 	matches bool
 }
 
-func (a *testAdapter) Name() string                                    { return a.name }
-func (a *testAdapter) Match(_ []string) bool                           { return a.matches }
-func (a *testAdapter) Prepare(ctx PrepareContext) ([]string, []string)  { return ctx.Command, nil }
-func (a *testAdapter) Monitor(_ []byte) *Status                        { return nil }
+func (a *testAdapter) Name() string          { return a.name }
+func (a *testAdapter) Match(_ []string) bool { return a.matches }
+func (a *testAdapter) Env(_ EnvContext) []string { return nil }
+func (a *testAdapter) Monitor(_ []byte) *Status  { return nil }
 
 func TestRegistryFallback(t *testing.T) {
 	r := NewRegistry()

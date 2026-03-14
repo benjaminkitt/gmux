@@ -15,16 +15,16 @@ type Status struct {
 
 // Adapter teaches gmux-run how to work with a specific child process.
 type Adapter interface {
-	// Name returns the adapter identifier (e.g. "pi", "pytest", "generic").
+	// Name returns the adapter identifier (e.g. "pi", "shell").
 	Name() string
 
 	// Match returns true if this adapter handles the given command.
 	Match(command []string) bool
 
-	// Prepare modifies the command and environment before launch.
-	// Returns the (possibly modified) command and adapter-specific env vars.
-	// Common env vars (GMUX, GMUX_SOCKET, etc.) are set by the runner.
-	Prepare(ctx PrepareContext) (command []string, env []string)
+	// Env returns adapter-specific environment variables for the child.
+	// Common GMUX_* vars are set automatically by the runner.
+	// Return nil if no extra env is needed.
+	Env(ctx EnvContext) []string
 
 	// Monitor receives PTY output and optionally produces a Status.
 	// Called on every PTY read with raw bytes. Must be cheap — no
@@ -32,9 +32,8 @@ type Adapter interface {
 	Monitor(output []byte) *Status
 }
 
-// PrepareContext provides launch context to Prepare().
-type PrepareContext struct {
-	Command    []string
+// EnvContext provides launch context to Env().
+type EnvContext struct {
 	Cwd        string
 	SessionID  string
 	SocketPath string

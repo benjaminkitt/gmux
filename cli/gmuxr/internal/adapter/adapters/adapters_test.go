@@ -25,16 +25,11 @@ func TestGenericName(t *testing.T) {
 	}
 }
 
-func TestGenericPreparePassthrough(t *testing.T) {
+func TestShellEnvNil(t *testing.T) {
 	g := NewShell()
-	cmd, env := g.Prepare(adapter.PrepareContext{
-		Command: []string{"echo", "hello"},
-	})
-	if len(cmd) != 2 || cmd[0] != "echo" || cmd[1] != "hello" {
-		t.Fatalf("expected passthrough, got %v", cmd)
-	}
-	if len(env) != 0 {
-		t.Fatalf("expected no env, got %v", env)
+	env := g.Env(adapter.EnvContext{})
+	if env != nil {
+		t.Fatalf("expected nil env, got %v", env)
 	}
 }
 
@@ -154,24 +149,28 @@ func TestPiNoMatchOther(t *testing.T) {
 	}
 }
 
-func TestPiPreparePassthrough(t *testing.T) {
+func TestPiEnvNil(t *testing.T) {
 	p := NewPi()
-	cmd, env := p.Prepare(adapter.PrepareContext{
-		Command:   []string{"pi"},
-		SessionID: "sess-test",
-	})
-	if len(cmd) != 1 || cmd[0] != "pi" {
-		t.Fatalf("expected passthrough, got %v", cmd)
-	}
-	if len(env) != 0 {
-		t.Fatalf("expected no extra env, got %v", env)
+	env := p.Env(adapter.EnvContext{SessionID: "sess-test"})
+	if env != nil {
+		t.Fatalf("expected nil env, got %v", env)
 	}
 }
 
-func TestPiMonitorReturnsNil(t *testing.T) {
+func TestPiMonitorPlainOutput(t *testing.T) {
 	p := NewPi()
-	// v1: pi adapter doesn't parse output yet
 	if s := p.Monitor([]byte("some output")); s != nil {
-		t.Fatal("v1 pi adapter should not parse output")
+		t.Fatal("should return nil for non-spinner output")
+	}
+}
+
+func TestPiMonitorSpinner(t *testing.T) {
+	p := NewPi()
+	s := p.Monitor([]byte("⠋ Working..."))
+	if s == nil {
+		t.Fatal("should detect spinner")
+	}
+	if s.State != "active" || s.Label != "working" {
+		t.Fatalf("expected active/working, got %s/%s", s.State, s.Label)
 	}
 }

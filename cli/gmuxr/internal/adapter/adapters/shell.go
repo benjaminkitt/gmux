@@ -18,8 +18,8 @@ func (g *Shell) Name() string { return "shell" }
 
 func (g *Shell) Match(_ []string) bool { return true }
 
-func (g *Shell) Prepare(ctx adapter.PrepareContext) ([]string, []string) {
-	return ctx.Command, nil
+func (g *Shell) Env(ctx adapter.EnvContext) []string {
+	return nil
 }
 
 func (g *Shell) Monitor(output []byte) *adapter.Status {
