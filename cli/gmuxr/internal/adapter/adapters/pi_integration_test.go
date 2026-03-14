@@ -217,21 +217,30 @@ func TestPiSessionFileLifecycle(t *testing.T) {
 fileFound:
 	t.Logf("session file created: %s", filepath.Base(files[0]))
 
-	// Read and verify header
-	header, err := ReadPiSessionHeader(files[0])
-	if err != nil {
-		t.Fatalf("read header: %v", err)
-	}
-	t.Logf("session UUID: %s", header.ID)
-	t.Logf("session cwd:  %s", header.Cwd)
-
-	if header.Cwd != cwd {
-		t.Errorf("expected cwd %q, got %q", cwd, header.Cwd)
-	}
-
-	// Wait for response to complete, then test text extraction
+	// Wait for response to complete before reading full info
 	time.Sleep(5 * time.Second)
 
+	// Read and verify session info
+	info, err := ReadPiSessionInfo(files[0])
+	if err != nil {
+		t.Fatalf("read session info: %v", err)
+	}
+	t.Logf("session UUID:  %s", info.ID)
+	t.Logf("session cwd:   %s", info.Cwd)
+	t.Logf("session title: %s", info.Title)
+	t.Logf("message count: %d", info.MessageCount)
+
+	if info.Cwd != cwd {
+		t.Errorf("expected cwd %q, got %q", cwd, info.Cwd)
+	}
+	if info.Title == "(no messages)" {
+		t.Error("expected a title from first user message")
+	}
+	if info.MessageCount < 2 {
+		t.Errorf("expected at least 2 messages (user+assistant), got %d", info.MessageCount)
+	}
+
+	// Also verify text extraction for similarity matching
 	text, err := ExtractPiText(files[0])
 	if err != nil {
 		t.Fatalf("extract text: %v", err)
@@ -253,5 +262,45 @@ func TestPiAdapterMatch(t *testing.T) {
 	t.Logf("pi binary: %s", path)
 	if !p.Match([]string{path}) {
 		t.Errorf("adapter should match full path: %s", path)
+	}
+}
+
+// TestPiReadRealSessionFiles reads real pi session files from disk and
+// verifies ReadPiSessionInfo extracts sensible titles.
+func TestPiReadRealSessionFiles(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home dir")
+	}
+
+	// Find any session directory with files
+	sessRoot := filepath.Join(home, ".pi", "agent", "sessions")
+	dirs, err := os.ReadDir(sessRoot)
+	if err != nil {
+		t.Skip("no pi sessions directory")
+	}
+
+	var totalFiles, totalRead int
+	for _, d := range dirs {
+		if !d.IsDir() {
+			continue
+		}
+		files := ListSessionFiles(filepath.Join(sessRoot, d.Name()))
+		totalFiles += len(files)
+		for _, f := range files {
+			info, err := ReadPiSessionInfo(f)
+			if err != nil {
+				t.Logf("  ERR %s: %v", filepath.Base(f), err)
+				continue
+			}
+			totalRead++
+			if totalRead <= 10 {
+				t.Logf("  [%s] %3d msgs | %s", info.ID[:8], info.MessageCount, info.Title)
+			}
+		}
+	}
+	t.Logf("Read %d/%d session files successfully", totalRead, totalFiles)
+	if totalFiles > 0 && totalRead == 0 {
+		t.Error("failed to read any session files")
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // PiSessionDir computes pi's session directory for a given cwd.
@@ -18,41 +19,153 @@ func PiSessionDir(cwd string) string {
 	return filepath.Join(home, ".pi", "agent", "sessions", encoded)
 }
 
-// PiSessionHeader is the first line of a pi JSONL session file.
-type PiSessionHeader struct {
-	Type    string `json:"type"`
-	Version int    `json:"version"`
-	ID      string `json:"id"`
-	Cwd     string `json:"cwd"`
+// PiSessionInfo holds metadata extracted from a pi JSONL session file.
+// Mirrors pi's own buildSessionInfo() priority: session_info.name if
+// present, first user message as fallback title.
+type PiSessionInfo struct {
+	ID           string    // UUID from session header
+	Cwd          string    // working directory
+	Created      time.Time // from session header timestamp
+	Title        string    // session_info.name or first user message
+	MessageCount int       // total message entries
+	FilePath     string    // path to the .jsonl file
 }
 
-// ReadPiSessionHeader reads and parses the first line of a session file.
-func ReadPiSessionHeader(path string) (*PiSessionHeader, error) {
-	f, err := os.Open(path)
+// ReadPiSessionInfo reads a pi JSONL session file and extracts metadata
+// for display in the sidebar. Reads just enough lines to get the title
+// (name from session_info, or first user message).
+func ReadPiSessionInfo(path string) (*PiSessionInfo, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
 
-	buf := make([]byte, 1024)
-	n, err := f.Read(buf)
-	if err != nil || n == 0 {
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) == 0 {
 		return nil, fmt.Errorf("empty file")
 	}
 
-	line := string(buf[:n])
-	if idx := strings.IndexByte(line, '\n'); idx >= 0 {
-		line = line[:idx]
+	// Parse header (first line)
+	var header struct {
+		Type      string `json:"type"`
+		Version   int    `json:"version"`
+		ID        string `json:"id"`
+		Cwd       string `json:"cwd"`
+		Timestamp string `json:"timestamp"`
 	}
-
-	var h PiSessionHeader
-	if err := json.Unmarshal([]byte(line), &h); err != nil {
+	if err := json.Unmarshal([]byte(lines[0]), &header); err != nil {
 		return nil, err
 	}
-	if h.Type != "session" {
-		return nil, fmt.Errorf("not a session header: type=%s", h.Type)
+	if header.Type != "session" {
+		return nil, fmt.Errorf("not a session header: type=%s", header.Type)
 	}
-	return &h, nil
+
+	created, _ := time.Parse(time.RFC3339Nano, header.Timestamp)
+
+	info := &PiSessionInfo{
+		ID:       header.ID,
+		Cwd:      header.Cwd,
+		Created:  created,
+		FilePath: path,
+	}
+
+	// Scan entries for name and first user message
+	var name string
+	var firstUserMsg string
+
+	for _, line := range lines[1:] {
+		if line == "" {
+			continue
+		}
+
+		// Quick type check without full parse
+		var peek struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal([]byte(line), &peek); err != nil {
+			continue
+		}
+
+		switch peek.Type {
+		case "session_info":
+			var si struct {
+				Name string `json:"name"`
+			}
+			if err := json.Unmarshal([]byte(line), &si); err == nil && si.Name != "" {
+				name = strings.TrimSpace(si.Name)
+			}
+
+		case "message":
+			info.MessageCount++
+			if firstUserMsg == "" {
+				firstUserMsg = extractFirstUserText(line)
+			}
+		}
+	}
+
+	// Priority: explicit name > first user message > fallback
+	switch {
+	case name != "":
+		info.Title = name
+	case firstUserMsg != "":
+		info.Title = truncateTitle(firstUserMsg, 80)
+	default:
+		info.Title = "(no messages)"
+	}
+
+	return info, nil
+}
+
+// extractFirstUserText parses a message JSONL line and returns the text
+// if it's a user message. Returns "" for non-user or non-text messages.
+func extractFirstUserText(line string) string {
+	var entry struct {
+		Message *struct {
+			Role    string          `json:"role"`
+			Content json.RawMessage `json:"content"`
+		} `json:"message"`
+	}
+	if err := json.Unmarshal([]byte(line), &entry); err != nil || entry.Message == nil {
+		return ""
+	}
+	if entry.Message.Role != "user" {
+		return ""
+	}
+
+	// Content can be string or array of content blocks
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(entry.Message.Content, &blocks); err == nil {
+		for _, b := range blocks {
+			if b.Type == "text" && b.Text != "" {
+				return b.Text
+			}
+		}
+		return ""
+	}
+
+	// Try plain string
+	var s string
+	if err := json.Unmarshal(entry.Message.Content, &s); err == nil {
+		return s
+	}
+	return ""
+}
+
+// truncateTitle shortens text to maxLen, breaking at word boundary.
+func truncateTitle(s string, maxLen int) string {
+	s = strings.Join(strings.Fields(s), " ") // collapse whitespace
+	if len(s) <= maxLen {
+		return s
+	}
+	// Find last space before maxLen
+	cut := strings.LastIndex(s[:maxLen], " ")
+	if cut < maxLen/2 {
+		cut = maxLen // no good break point, hard cut
+	}
+	return s[:cut] + "…"
 }
 
 // ExtractPiText reads a pi JSONL session file and extracts conversation

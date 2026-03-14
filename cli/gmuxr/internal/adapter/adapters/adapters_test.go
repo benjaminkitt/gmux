@@ -1,6 +1,8 @@
 package adapters
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/gmuxapp/gmux/cli/gmuxr/internal/adapter"
@@ -172,5 +174,140 @@ func TestPiMonitorSpinner(t *testing.T) {
 	}
 	if s.State != "active" || s.Label != "working" {
 		t.Fatalf("expected active/working, got %s/%s", s.State, s.Label)
+	}
+}
+
+// --- Pi session info tests ---
+
+func writeTempJSONL(t *testing.T, lines ...string) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test-session.jsonl")
+	var content string
+	for _, l := range lines {
+		content += l + "\n"
+	}
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestReadPiSessionInfoFirstUserMessage(t *testing.T) {
+	path := writeTempJSONL(t,
+		`{"type":"session","version":3,"id":"abc-123","timestamp":"2026-03-15T10:00:00Z","cwd":"/tmp/test"}`,
+		`{"type":"model_change","id":"m1","timestamp":"2026-03-15T10:00:00Z"}`,
+		`{"type":"message","id":"u1","timestamp":"2026-03-15T10:01:00Z","message":{"role":"user","content":[{"type":"text","text":"Fix the auth bug in login.go"}]}}`,
+		`{"type":"message","id":"a1","timestamp":"2026-03-15T10:01:05Z","message":{"role":"assistant","content":[{"type":"text","text":"I'll fix that for you."}]}}`,
+	)
+
+	info, err := ReadPiSessionInfo(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.ID != "abc-123" {
+		t.Errorf("expected id abc-123, got %s", info.ID)
+	}
+	if info.Cwd != "/tmp/test" {
+		t.Errorf("expected cwd /tmp/test, got %s", info.Cwd)
+	}
+	if info.Title != "Fix the auth bug in login.go" {
+		t.Errorf("expected first user msg as title, got %q", info.Title)
+	}
+	if info.MessageCount != 2 {
+		t.Errorf("expected 2 messages, got %d", info.MessageCount)
+	}
+}
+
+func TestReadPiSessionInfoNameOverridesFirstMessage(t *testing.T) {
+	path := writeTempJSONL(t,
+		`{"type":"session","version":3,"id":"abc-456","timestamp":"2026-03-15T10:00:00Z","cwd":"/tmp/test"}`,
+		`{"type":"message","id":"u1","timestamp":"2026-03-15T10:01:00Z","message":{"role":"user","content":[{"type":"text","text":"Fix the auth bug"}]}}`,
+		`{"type":"session_info","name":"  Auth refactor  "}`,
+		`{"type":"message","id":"a1","timestamp":"2026-03-15T10:01:05Z","message":{"role":"assistant","content":[{"type":"text","text":"Done."}]}}`,
+	)
+
+	info, err := ReadPiSessionInfo(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Title != "Auth refactor" {
+		t.Errorf("expected session_info name as title, got %q", info.Title)
+	}
+}
+
+func TestReadPiSessionInfoNoMessages(t *testing.T) {
+	path := writeTempJSONL(t,
+		`{"type":"session","version":3,"id":"abc-789","timestamp":"2026-03-15T10:00:00Z","cwd":"/tmp/test"}`,
+	)
+
+	info, err := ReadPiSessionInfo(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Title != "(no messages)" {
+		t.Errorf("expected fallback title, got %q", info.Title)
+	}
+	if info.MessageCount != 0 {
+		t.Errorf("expected 0 messages, got %d", info.MessageCount)
+	}
+}
+
+func TestReadPiSessionInfoLongTitleTruncated(t *testing.T) {
+	long := "Please help me with this very long request that goes on and on about many different things and really should be truncated for the sidebar"
+	path := writeTempJSONL(t,
+		`{"type":"session","version":3,"id":"abc-long","timestamp":"2026-03-15T10:00:00Z","cwd":"/tmp/test"}`,
+		`{"type":"message","id":"u1","timestamp":"2026-03-15T10:01:00Z","message":{"role":"user","content":[{"type":"text","text":"`+long+`"}]}}`,
+	)
+
+	info, err := ReadPiSessionInfo(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(info.Title) > 85 { // 80 + "…"
+		t.Errorf("title too long (%d chars): %q", len(info.Title), info.Title)
+	}
+	if info.Title[len(info.Title)-3:] != "…" {
+		t.Errorf("expected truncation marker, got %q", info.Title)
+	}
+}
+
+func TestReadPiSessionInfoStringContent(t *testing.T) {
+	// Some older formats use plain string content instead of array
+	path := writeTempJSONL(t,
+		`{"type":"session","version":3,"id":"abc-str","timestamp":"2026-03-15T10:00:00Z","cwd":"/tmp/test"}`,
+		`{"type":"message","id":"u1","timestamp":"2026-03-15T10:01:00Z","message":{"role":"user","content":"Help me debug this"}}`,
+	)
+
+	info, err := ReadPiSessionInfo(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Title != "Help me debug this" {
+		t.Errorf("expected string content as title, got %q", info.Title)
+	}
+}
+
+func TestPiSessionDirEncoding(t *testing.T) {
+	// Can't test the full path (depends on $HOME) but test the encoding logic
+	dir := PiSessionDir("/home/mg/dev/gmux")
+	if !filepath.IsAbs(dir) {
+		t.Errorf("expected absolute path, got %s", dir)
+	}
+	base := filepath.Base(dir)
+	if base != "--home-mg-dev-gmux--" {
+		t.Errorf("expected --home-mg-dev-gmux--, got %s", base)
+	}
+}
+
+func TestListSessionFiles(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "a.jsonl"), []byte("{}"), 0644)
+	os.WriteFile(filepath.Join(dir, "b.jsonl"), []byte("{}"), 0644)
+	os.WriteFile(filepath.Join(dir, "c.txt"), []byte("not a session"), 0644)
+
+	files := ListSessionFiles(dir)
+	if len(files) != 2 {
+		t.Errorf("expected 2 jsonl files, got %d", len(files))
 	}
 }

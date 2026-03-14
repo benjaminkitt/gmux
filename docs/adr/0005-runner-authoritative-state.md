@@ -36,40 +36,29 @@ type Adapter interface {
     // Adapters are tried in priority order; first match wins.
     Match(command []string) bool
 
-    // Prepare modifies the command and environment before launch.
-    // Can inject flags, set env vars, wrap the command.
-    // Returns the (possibly modified) command and extra env vars.
-    Prepare(ctx PrepareContext) (command []string, env []string)
+    // Env returns adapter-specific environment variables for the child.
+    // The runner automatically sets GMUX, GMUX_SOCKET, GMUX_SESSION_ID,
+    // GMUX_ADAPTER, GMUX_VERSION. Return nil if no extra env needed.
+    // NOTE: adapters never modify the command — see docs/adapters.md.
+    Env(ctx EnvContext) []string
 
     // Monitor receives PTY output and produces Status events.
     // Called on every PTY read with the raw bytes.
     // Returns nil when there's no status change.
     Monitor(output []byte) *Status
-
-    // Sidecar starts an optional background goroutine that watches
-    // external state (files, sockets, APIs) and sends Status events.
-    // Receives the session context; sends events on the channel.
-    // Returns nil if no sidecar is needed.
-    Sidecar(ctx SidecarContext) <-chan Status
-
-    // Resumable returns sessions that can be resumed.
-    // Called by gmuxd, not gmuxr. Returns nil if this adapter
-    // doesn't support resumable sessions.
-    Resumable() []ResumableSession
 }
 
-type PrepareContext struct {
-    Command    []string
+type EnvContext struct {
     Cwd        string
     SessionID  string
     SocketPath string
-    // Note: the runner automatically sets GMUX=1, GMUX_SOCKET,
-    // GMUX_SESSION_ID, GMUX_ADAPTER, and GMUX_VERSION in the
-    // child's environment. Prepare() returns additional env vars
-    // specific to this adapter.
 }
 
-type SidecarContext struct {
+// NOTE: Sidecar and Resumable were originally proposed here but have
+// been moved to gmuxd. Session file attribution is gmuxd's concern
+// (ADR-0009); resumable session discovery is a per-machine operation.
+
+type SidecarContext struct {  // used by gmuxd, not adapter interface
     SessionID   string
     Cwd         string
     Command     []string
@@ -94,16 +83,8 @@ func (a *PiAdapter) Match(cmd []string) bool {
     return len(cmd) > 0 && filepath.Base(cmd[0]) == "pi"
 }
 
-func (a *PiAdapter) Prepare(ctx PrepareContext) ([]string, []string) {
-    // Inject session tracking flag that pi understands
-    cmd := append(ctx.Command, "--session-id", ctx.SessionID)
-    // Note: GMUX, GMUX_SOCKET, GMUX_SESSION_ID, GMUX_ADAPTER, GMUX_VERSION
-    // are set automatically by the runner for all adapters.
-    // Adapter-specific env vars go here:
-    env := []string{
-        "PI_GMUX_INTEGRATION=1",
-    }
-    return cmd, env
+func (a *PiAdapter) Env(ctx EnvContext) []string {
+    return nil // no extra env needed; command is never modified
 }
 
 func (a *PiAdapter) Sidecar(ctx SidecarContext) <-chan Status {
@@ -119,7 +100,7 @@ func (a *PiAdapter) Resumable() []ResumableSession {
 }
 ```
 
-**What this gives the user:** `gmuxr pi` just works. The adapter injects the right flags, watches pi's session file, maps pi's internal states to gmux Status events (agent thinking → `active`, waiting for user → `attention`, task complete → `success`). No configuration.
+**What this gives the user:** `gmuxr pi` just works. The adapter detects spinner output → `active` status. Session file attribution is handled by gmuxd (ADR-0009), not the adapter. No configuration.
 
 #### Example: `pytest` adapter
 
@@ -131,8 +112,8 @@ func (a *PytestAdapter) Match(cmd []string) bool {
     return false
 }
 
-func (a *PytestAdapter) Prepare(ctx PrepareContext) ([]string, []string) {
-    return ctx.Command, nil // no modification needed
+func (a *PytestAdapter) Env(ctx EnvContext) []string {
+    return nil
 }
 
 func (a *PytestAdapter) Monitor(output []byte) *Status {
@@ -157,9 +138,7 @@ func (a *PytestAdapter) Monitor(output []byte) *Status {
 ```go
 func (a *GenericAdapter) Match(cmd []string) bool { return true }
 
-func (a *GenericAdapter) Prepare(ctx PrepareContext) ([]string, []string) {
-    return ctx.Command, nil
-}
+func (a *GenericAdapter) Env(ctx EnvContext) []string { return nil }
 
 func (a *GenericAdapter) Monitor(output []byte) *Status {
     // Any output = activity
@@ -260,7 +239,7 @@ data: {"exit_code":0}
 
 ### Part 2b: Child awareness protocol
 
-The child process needs to know it's running inside gmuxr, and how to talk back. This is the contract between the runner and any child — used by adapters' `Prepare()`, by tools that want native gmux integration, and by the `PUT /status` escape hatch.
+The child process needs to know it's running inside gmuxr, and how to talk back. This is the contract between the runner and any child — used by adapters' `Env()`, by tools that want native gmux integration, and by the `PUT /status` escape hatch.
 
 #### Environment variables
 
@@ -428,7 +407,7 @@ The store caches what runners report, not a source of truth:
 │  ┌──────────┐    ┌──────────┐    ┌──────────────────────┐  │
 │  │ Adapter   │    │ PTY      │    │ Unix socket HTTP/WS  │  │
 │  │           │    │          │    │                      │  │
-│  │ Prepare() ├───→│ fork/    │    │  GET  /meta          │  │
+│  │ Env()     ├───→│ fork/    │    │  GET  /meta          │  │
 │  │           │    │ exec     │    │  GET  /events (SSE)  │  │
 │  │ Monitor() │←───┤ output   │    │  PUT  /status        │  │
 │  │           │    │          │    │  WS   / (terminal)   │  │
@@ -466,7 +445,7 @@ The store caches what runners report, not a source of truth:
 - Implement `generic` adapter (fallback: output activity → `active`)
 - Implement `pi` adapter (match `pi` command, sidecar watches session file)
 - Adapter registry with priority-ordered matching
-- Wire `Prepare()` into launch, `Monitor()` into PTY read loop
+- Wire `Env()` into launch, `Monitor()` into PTY read loop
 
 ### Phase 2: Runner HTTP endpoints
 - Add `/meta`, `/events`, `/status` to existing Unix socket HTTP server
