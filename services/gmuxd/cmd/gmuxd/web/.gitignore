@@ -1,0 +1,5 @@
+# Build output from vite — overwritten by build script.
+# Only index.html placeholder is tracked.
+*
+!.gitignore
+!index.html

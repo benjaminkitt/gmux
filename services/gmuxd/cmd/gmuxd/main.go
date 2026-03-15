@@ -518,6 +518,10 @@ func main() {
 		}
 	})
 
+	// ── Embedded frontend (SPA fallback) ──
+
+	mux.Handle("/", spaHandler())
+
 	addr := envOr("GMUXD_ADDR", ":8790")
 	log.Printf("gmuxd listening on %s", addr)
 	log.Fatal(http.ListenAndServe(addr, mux))
