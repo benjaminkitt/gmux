@@ -34,6 +34,7 @@ export const SessionSchema = z.object({
   unread: z.boolean().optional().default(false),
   resumable: z.boolean().optional().default(false),
   resume_key: z.string().optional(),
+  close_action: z.enum(['minimize', 'dismiss']).optional(),
   socket_path: z.string().optional(),
 })
 

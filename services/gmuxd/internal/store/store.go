@@ -21,9 +21,10 @@ type Session struct {
 	Subtitle   string  `json:"subtitle,omitempty"`
 	Status     *Status `json:"status"`
 	Unread     bool    `json:"unread"`
-	Resumable  bool    `json:"resumable,omitempty"`
-	ResumeKey  string  `json:"resume_key,omitempty"`
-	SocketPath string  `json:"socket_path,omitempty"`
+	Resumable   bool   `json:"resumable,omitempty"`
+	ResumeKey   string `json:"resume_key,omitempty"`
+	CloseAction string `json:"close_action,omitempty"` // "minimize" (kill but keep resumable) or "dismiss" (remove)
+	SocketPath  string `json:"socket_path,omitempty"`
 }
 
 // Status is the application-reported status per schema v2.
@@ -77,6 +78,12 @@ func (s *Store) Get(id string) (Session, bool) {
 }
 
 func (s *Store) Upsert(sess Session) {
+	// Derive close_action: live + resume-capable → minimize (−), everything else → dismiss (×)
+	if sess.Alive && sess.ResumeKey != "" {
+		sess.CloseAction = "minimize"
+	} else {
+		sess.CloseAction = "dismiss"
+	}
 	s.mu.Lock()
 	s.sessions[sess.ID] = sess
 	s.mu.Unlock()

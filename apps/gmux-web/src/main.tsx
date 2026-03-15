@@ -8,6 +8,7 @@ import '@xterm/xterm/css/xterm.css'
 import './styles.css'
 import { attachKeyboardHandler } from './keyboard'
 import { createReplayBuffer } from './replay'
+import { createSidebarState } from './sidebar-state'
 
 import type { Session, Folder } from './mock-data'
 import { getMockFolders, groupByFolder } from './mock-data'
@@ -36,6 +37,7 @@ function toUISession(s: ProtocolSession): Session {
     unread: s.unread ?? false,
     resumable: (s as any).resumable ?? false,
     resume_key: (s as any).resume_key ?? '',
+    close_action: s.close_action ?? (s.alive ? 'dismiss' : undefined),
     socket_path: s.socket_path ?? '',
   }
 }
@@ -295,12 +297,15 @@ function SessionItem({
   session,
   selected,
   onClick,
+  onClose,
 }: {
   session: Session
   selected: boolean
   onClick: () => void
+  onClose?: () => void
 }) {
   const indicator = sessionIndicator(session)
+  const closeAction = session.close_action
 
   return (
     <div
@@ -330,6 +335,15 @@ function SessionItem({
           <span class={`session-indicator-dot ${indicator}`} />
         </div>
       )}
+      {onClose && closeAction && (
+        <button
+          class={`session-close-btn ${closeAction}`}
+          onClick={(e) => { e.stopPropagation(); onClose() }}
+          title={closeAction === 'minimize' ? 'Suspend session' : 'Remove session'}
+        >
+          {closeAction === 'minimize' ? '−' : '×'}
+        </button>
+      )}
     </div>
   )
 }
@@ -338,14 +352,31 @@ function FolderGroup({
   folder,
   selectedId,
   onSelect,
+  onCloseSession,
+  onHideFolder,
+  isSessionVisible,
 }: {
   folder: Folder
   selectedId: string | null
   onSelect: (id: string) => void
+  onCloseSession: (session: Session) => void
+  onHideFolder: (cwd: string) => void
+  isSessionVisible: (session: Session) => boolean
 }) {
   const [expanded, setExpanded] = useState(true)
+  const [showMore, setShowMore] = useState(false)
   const dotColor = folderDotColor(folder)
+
+  // Split sessions into visible and collapsed ("show more")
+  const visible: Session[] = []
+  const collapsed: Session[] = []
+  for (const s of folder.sessions) {
+    if (isSessionVisible(s)) visible.push(s)
+    else collapsed.push(s)
+  }
+
   const aliveCount = folder.sessions.filter(s => s.alive).length
+  const displayCount = aliveCount > 0 ? aliveCount : visible.length
 
   return (
     <div class="folder">
@@ -355,21 +386,47 @@ function FolderGroup({
         {dotColor && (
           <div class="folder-dot" style={{ background: dotColor }} />
         )}
-        <div class="folder-count">
-          {aliveCount > 0 ? aliveCount : folder.sessions.length}
-        </div>
+        <div class="folder-count">{displayCount}</div>
         <LaunchButton cwd={folder.path} className="folder-launch-btn" />
       </div>
       {expanded && (
         <div class="folder-sessions">
-          {folder.sessions.map(s => (
+          {visible.map(s => (
             <SessionItem
               key={s.id}
               session={s}
               selected={selectedId === s.id}
               onClick={() => onSelect(s.id)}
+              onClose={() => onCloseSession(s)}
             />
           ))}
+          {visible.length === 0 && collapsed.length > 0 && (
+            <button
+              class="folder-hide-btn"
+              onClick={() => onHideFolder(folder.path)}
+            >
+              Hide folder
+            </button>
+          )}
+          {collapsed.length > 0 && (
+            <>
+              <button
+                class="show-more-btn"
+                onClick={() => setShowMore(v => !v)}
+              >
+                {showMore ? 'Show less' : `Show ${collapsed.length} more`}
+              </button>
+              {showMore && collapsed.map(s => (
+                <SessionItem
+                  key={s.id}
+                  session={s}
+                  selected={selectedId === s.id}
+                  onClick={() => onSelect(s.id)}
+                  onClose={() => onCloseSession(s)}
+                />
+              ))}
+            </>
+          )}
         </div>
       )}
     </div>
@@ -378,17 +435,29 @@ function FolderGroup({
 
 function Sidebar({
   folders,
+  hiddenFolders,
   selectedId,
   onSelect,
+  onCloseSession,
+  onHideFolder,
+  onShowFolder,
+  isSessionVisible,
   open,
   onClose,
 }: {
   folders: Folder[]
+  hiddenFolders: Folder[]
   selectedId: string | null
   onSelect: (id: string) => void
+  onCloseSession: (session: Session) => void
+  onHideFolder: (cwd: string) => void
+  onShowFolder: (cwd: string) => void
+  isSessionVisible: (session: Session) => boolean
   open: boolean
   onClose: () => void
 }) {
+  const [showFolderPicker, setShowFolderPicker] = useState(false)
+
   return (
     <>
       <div class={`sidebar-overlay ${open ? 'visible' : ''}`} onClick={onClose} />
@@ -408,8 +477,38 @@ function Sidebar({
                 onSelect(id)
                 onClose()
               }}
+              onCloseSession={onCloseSession}
+              onHideFolder={onHideFolder}
+              isSessionVisible={isSessionVisible}
             />
           ))}
+          {hiddenFolders.length > 0 && (
+            <div class="sidebar-add-folder">
+              <button
+                class="add-folder-btn"
+                onClick={() => setShowFolderPicker(v => !v)}
+              >
+                + Add folder
+              </button>
+              {showFolderPicker && (
+                <div class="folder-picker">
+                  {hiddenFolders.map(f => (
+                    <button
+                      key={f.path}
+                      class="folder-picker-item"
+                      onClick={() => {
+                        onShowFolder(f.path)
+                        setShowFolderPicker(false)
+                      }}
+                    >
+                      <span class="folder-picker-name">{f.name}</span>
+                      <span class="folder-picker-count">{f.sessions.length}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </aside>
     </>
@@ -604,13 +703,14 @@ function TerminalView({
       // If no BSU → write immediately (old runner / no scrollback)
       // Frontend never calls term.clear()/term.reset() — all done via escape sequences.
       const replay = createReplayBuffer((chunks) => {
+        // Check if replay has content beyond just BSU/ESU markers (16 bytes).
+        // BSU (8 bytes) + ESU (8 bytes) = 16 bytes minimum for an empty replay.
+        const totalBytes = chunks.reduce((n, c) => n + c.length, 0)
+        const hasContent = totalBytes > 16
+
         for (const chunk of chunks) term.write(chunk)
-        // After replay: hide if terminal has content.
-        // Empty replay (new session, no scrollback yet) keeps overlay visible.
-        const line = term.buffer.active.getLine(0)
-        if (line && line.translateToString().trim() !== '') {
-          setTermLoading(false)
-        }
+
+        if (hasContent) setTermLoading(false)
       })
 
       const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -839,6 +939,8 @@ function MobileTerminalBar({
 
 type ConnectionState = 'connecting' | 'connected' | 'error'
 
+const sidebarState = createSidebarState()
+
 function App() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -846,9 +948,17 @@ function App() {
   const [connState, setConnState] = useState<ConnectionState>('connecting')
   const [ctrlArmed, setCtrlArmed] = useState(false)
   const [launchers, setLaunchers] = useState<LauncherDef[]>([])
+  const [, forceUpdate] = useState(0) // re-render on sidebar state change
   const terminalInputRef = useRef<((data: string) => void) | null>(null)
+  const dismissedIds = useRef(new Set<string>())
 
   useEffect(() => { fetchConfig().then(cfg => setLaunchers(cfg.launchers)) }, [])
+
+  // Subscribe to sidebar state changes for re-render
+  useEffect(() => sidebarState.subscribe(() => forceUpdate(n => n + 1)), [])
+
+  // Sync sidebar visibility whenever sessions change
+  useEffect(() => { sidebarState.syncSessions(sessions) }, [sessions])
 
   // Load data
   useEffect(() => {
@@ -884,6 +994,8 @@ function App() {
           const envelope = JSON.parse(e.data)
           const session = envelope.session ?? envelope
           const updated = toUISession(session)
+          // Ignore updates for sessions the user has dismissed
+          if (dismissedIds.current.has(updated.id)) return
           let isNew = false
           setSessions(prev => {
             const idx = prev.findIndex(s => s.id === updated.id)
@@ -929,7 +1041,15 @@ function App() {
     })
   }, [sessions])
 
-  const folders = useMemo(() => groupByFolder(filteredSessions), [filteredSessions])
+  const allFolders = useMemo(() => groupByFolder(filteredSessions), [filteredSessions])
+  const folders = useMemo(
+    () => allFolders.filter(f => sidebarState.isFolderVisible(f.path)),
+    [allFolders],
+  )
+  const hiddenFolders = useMemo(
+    () => allFolders.filter(f => !sidebarState.isFolderVisible(f.path)),
+    [allFolders],
+  )
   const selected = useMemo(
     () => sessions.find(s => s.id === selectedId) ?? null,
     [sessions, selectedId],
@@ -949,6 +1069,26 @@ function App() {
       if (best) setSelectedId(best.id)
     }
   }, [filteredSessions, selectedId])
+
+  const handleCloseSession = useCallback((session: Session) => {
+    if (session.close_action === 'minimize') {
+      // Kill but keep — will become resumable via SSE
+      killSession(session.id)
+    } else {
+      // Dismiss: remove from sidebar state + sessions list immediately
+      const cwd = session.cwd ?? '~'
+      const key = session.resume_key ?? session.id
+      sidebarState.dismissSession(cwd, key)
+      dismissedIds.current.add(session.id)
+      setSessions(prev => prev.filter(s => s.id !== session.id))
+      if (session.alive) killSession(session.id)
+      if (selectedId === session.id) setSelectedId(null)
+    }
+  }, [selectedId])
+
+  const handleHideFolder = useCallback((cwd: string) => {
+    sidebarState.hideFolder(cwd)
+  }, [])
 
   const handleSelect = useCallback((id: string) => {
     setSelectedId(id)
@@ -988,8 +1128,13 @@ function App() {
     <div class="app-layout">
       <Sidebar
         folders={folders}
+        hiddenFolders={hiddenFolders}
         selectedId={selectedId}
         onSelect={handleSelect}
+        onCloseSession={handleCloseSession}
+        onHideFolder={handleHideFolder}
+        onShowFolder={(cwd) => sidebarState.showFolder(cwd)}
+        isSessionVisible={(s) => sidebarState.isSessionVisible(s)}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
       />
@@ -1016,7 +1161,7 @@ function App() {
           <TerminalView
             sessionId={selected.id}
             ctrlArmed={ctrlArmed}
-            onCtrlConsumed={() => setCtrlArmed(false)}
+            onCtrlConsumed={handleCtrlConsumed}
           />
         ) : (
           <EmptyState launchers={launchers} />

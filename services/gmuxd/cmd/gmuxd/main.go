@@ -280,13 +280,15 @@ func main() {
 		// Resolve command from launcher_id if no explicit command.
 		if len(req.Command) == 0 && req.LauncherID != "" {
 			cfg := launchConfig
+			found := false
 			for _, l := range cfg.Launchers {
 				if l.ID == req.LauncherID {
 					req.Command = l.Command
+					found = true
 					break
 				}
 			}
-			if len(req.Command) == 0 {
+			if !found {
 				writeError(w, http.StatusBadRequest, "launcher_unavailable", fmt.Sprintf("launcher %q is not available on this system", req.LauncherID))
 				return
 			}

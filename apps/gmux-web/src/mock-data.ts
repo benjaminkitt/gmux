@@ -29,6 +29,7 @@ export interface Session {
   unread: boolean
   resumable?: boolean
   resume_key?: string
+  close_action?: 'minimize' | 'dismiss'
   socket_path: string
 }
 
