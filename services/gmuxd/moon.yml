@@ -2,7 +2,7 @@ language: bash
 
 tasks:
   dev:
-    script: exec watchexec -r -e go -- 'go build -o ../../bin/gmuxd ./cmd/gmuxd && exec ../../bin/gmuxd'
+    script: exec watchexec -r -e go -w . -w ../../packages/adapter -- 'go build -o ../../bin/gmuxd ./cmd/gmuxd && exec ../../bin/gmuxd'
     deps:
       - gmuxr:build
     preset: server
@@ -12,6 +12,7 @@ tasks:
       - "cmd/**/*"
       - "internal/**/*"
       - "go.mod"
+      - "../../packages/adapter/**/*.go"
   test:
     command: go test ./...
   lint:

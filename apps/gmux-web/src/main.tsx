@@ -442,7 +442,45 @@ function sendResize(ws: WebSocket | null, fit: FitAddon | null, term: Terminal |
   ws.send(JSON.stringify(msg))
 }
 
-function TerminalView({ sessionId }: { sessionId: string }) {
+function ctrlSequenceFor(data: string): string | null {
+  if (data.length !== 1) return null
+
+  const ch = data
+  if (/[a-z]/i.test(ch)) {
+    return String.fromCharCode(ch.toUpperCase().charCodeAt(0) - 64)
+  }
+
+  switch (ch) {
+    case '@':
+      return '\x00'
+    case '[':
+      return '\x1b'
+    case '\\':
+      return '\x1c'
+    case ']':
+      return '\x1d'
+    case '^':
+      return '\x1e'
+    case '_':
+      return '\x1f'
+    case '?':
+      return '\x7f'
+    default:
+      return null
+  }
+}
+
+function TerminalView({
+  sessionId,
+  ctrlArmed,
+  onCtrlConsumed,
+  onInputReady,
+}: {
+  sessionId: string
+  ctrlArmed: boolean
+  onCtrlConsumed: () => void
+  onInputReady?: (send: ((data: string) => void) | null) => void
+}) {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
@@ -450,9 +488,12 @@ function TerminalView({ sessionId }: { sessionId: string }) {
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const disposed = useRef(false)
   const currentSessionId = useRef(sessionId)
+  const ctrlArmedRef = useRef(ctrlArmed)
+  const loadingRef = useRef<HTMLDivElement>(null)
 
   // Keep ref in sync so reconnect closure sees latest value
   currentSessionId.current = sessionId
+  ctrlArmedRef.current = ctrlArmed
 
   // One-time terminal setup
   useEffect(() => {
@@ -474,12 +515,28 @@ function TerminalView({ sessionId }: { sessionId: string }) {
     fitRef.current = fitAddon
 
     // Send raw input to PTY — always uses current wsRef
-    const sendInput = (data: string) => {
+    const sendRawInput = (data: string) => {
       const ws = wsRef.current
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(new TextEncoder().encode(data))
+        term.focus()
       }
     }
+
+    const sendInput = (data: string) => {
+      if (ctrlArmedRef.current) {
+        const ctrlData = ctrlSequenceFor(data)
+        if (ctrlData) {
+          ctrlArmedRef.current = false
+          onCtrlConsumed()
+          sendRawInput(ctrlData)
+          return
+        }
+      }
+      sendRawInput(data)
+    }
+
+    onInputReady?.(sendRawInput)
 
     // Terminal input → WS
     const dataDisposable = term.onData((data) => sendInput(data))
@@ -513,11 +570,12 @@ function TerminalView({ sessionId }: { sessionId: string }) {
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
       wsRef.current?.close()
       wsRef.current = null
+      onInputReady?.(null)
       term.dispose()
       termRef.current = null
       fitRef.current = null
     }
-  }, []) // terminal lives for component lifetime
+  }, [onCtrlConsumed, onInputReady]) // terminal lives for component lifetime
 
   // WebSocket connection — reconnects on sessionId change or drop
   useEffect(() => {
@@ -685,6 +743,59 @@ function MainHeader({ session, onKill }: { session: Session | null; onKill?: (id
   )
 }
 
+function MobileTerminalBar({
+  canSend,
+  ctrlArmed,
+  onMenu,
+  onSend,
+  onToggleCtrl,
+}: {
+  canSend: boolean
+  ctrlArmed: boolean
+  onMenu: () => void
+  onSend: (data: string) => void
+  onToggleCtrl: () => void
+}) {
+  const actions = [
+    { label: 'esc', sequence: '\x1b', title: 'Escape' },
+    { label: 'tab', sequence: '\t', title: 'Tab' },
+    { label: '↑', sequence: '\x1b[A', title: 'Up arrow' },
+    { label: '↓', sequence: '\x1b[B', title: 'Down arrow' },
+    { label: '↵', sequence: '\n', title: 'New line' },
+  ]
+
+  return (
+    <div class="mobile-bottom-bar" aria-label="Mobile terminal controls">
+      <button class="mobile-bottom-action mobile-bottom-menu" onClick={onMenu} title="Open sessions">
+        <span class="mobile-bottom-icon">☰</span>
+        <span>menu</span>
+      </button>
+      <div class="mobile-terminal-actions" role="toolbar" aria-label="Terminal keys">
+        <button
+          class={`mobile-bottom-action mobile-bottom-modifier ${ctrlArmed ? 'armed' : ''}`}
+          disabled={!canSend}
+          onClick={onToggleCtrl}
+          title={ctrlArmed ? 'Ctrl armed for next typed key' : 'Arm Ctrl for next typed key'}
+          aria-pressed={ctrlArmed}
+        >
+          ctrl
+        </button>
+        {actions.map((action) => (
+          <button
+            key={action.label}
+            class={`mobile-bottom-action ${action.label === '↵' ? 'mobile-bottom-enter' : ''}`}
+            disabled={!canSend}
+            onClick={() => onSend(action.sequence)}
+            title={action.title}
+          >
+            {action.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── App ──
 
 type ConnectionState = 'connecting' | 'connected' | 'error'
@@ -694,6 +805,8 @@ function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [connState, setConnState] = useState<ConnectionState>('connecting')
+  const [ctrlArmed, setCtrlArmed] = useState(false)
+  const terminalInputRef = useRef<((data: string) => void) | null>(null)
 
   // Load data
   useEffect(() => {
@@ -797,6 +910,7 @@ function App() {
 
   const handleSelect = useCallback((id: string) => {
     setSelectedId(id)
+    setCtrlArmed(false)
     // If resumable, resume it. The session will transition in-place
     // (alive: true, socket_path set) via SSE upsert, then the terminal opens.
     const sess = sessions.find(s => s.id === id)
@@ -805,7 +919,28 @@ function App() {
     }
   }, [sessions])
 
-  const canAttach = selected?.alive && !USE_MOCK
+  const canAttach = !!selected?.alive && !USE_MOCK
+
+  useEffect(() => {
+    if (!canAttach) setCtrlArmed(false)
+  }, [canAttach])
+
+  const handleTerminalInputReady = useCallback((send: ((data: string) => void) | null) => {
+    terminalInputRef.current = send
+  }, [])
+
+  const handleMobileInput = useCallback((data: string) => {
+    terminalInputRef.current?.(data)
+  }, [])
+
+  const handleToggleCtrl = useCallback(() => {
+    if (!canAttach) return
+    setCtrlArmed((armed) => !armed)
+  }, [canAttach])
+
+  const handleCtrlConsumed = useCallback(() => {
+    setCtrlArmed(false)
+  }, [])
 
   return (
     <div class="app-layout">
@@ -818,13 +953,6 @@ function App() {
       />
 
       <div class="main-panel">
-        <div class="mobile-header">
-          <button class="mobile-toggle" onClick={() => setSidebarOpen(true)}>
-            ☰
-          </button>
-          <div class="sidebar-logo" style={{ marginLeft: 8 }}>gmux</div>
-        </div>
-
         <MainHeader session={selected} onKill={killSession} />
 
         {connState === 'connecting' ? (
@@ -847,6 +975,14 @@ function App() {
         ) : (
           <EmptyState />
         )}
+
+        <MobileTerminalBar
+          canSend={canAttach}
+          ctrlArmed={ctrlArmed}
+          onMenu={() => setSidebarOpen(true)}
+          onSend={handleMobileInput}
+          onToggleCtrl={handleToggleCtrl}
+        />
       </div>
     </div>
   )
