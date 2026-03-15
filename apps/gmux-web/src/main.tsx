@@ -292,19 +292,23 @@ function formatAge(iso: string): string {
   return `${days}d`
 }
 
-function folderDotColor(folder: Folder): string | null {
-  if (folder.sessions.some(s => s.alive && s.status?.working))
-    return 'var(--accent)'
-  return null
+/** Check if any session in a folder is actively working. */
+function folderHasWorkingSessions(folder: Folder): boolean {
+  return folder.sessions.some(s => s.alive && s.status?.working)
+}
+
+/** Check if any session in a folder is unread. */
+function folderHasUnreadSessions(folder: Folder): boolean {
+  return folder.sessions.some(s => s.unread)
 }
 
 // ── Components ──
 
-/** Determine if a session should show a working indicator dot. */
-function sessionIndicator(session: Session): 'working' | null {
-  if (!session.alive || !session.status) return null
-  if (session.status.working) return 'working'
-  return null
+/** Determine the dot indicator state for a session. */
+function sessionDotState(session: Session): 'working' | 'unread' | 'none' {
+  if (session.alive && session.status?.working) return 'working'
+  if (session.unread) return 'unread'
+  return 'none'
 }
 
 function SessionItem({
@@ -318,37 +322,31 @@ function SessionItem({
   onClick: () => void
   onClose?: () => void
 }) {
-  const indicator = sessionIndicator(session)
+  const dotState = sessionDotState(session)
   const closeAction = session.close_action
+  // Only show kind if it's not the default
+  const showKind = session.kind !== 'shell' && session.kind !== 'pi'
 
   return (
     <div
       class={`session-item ${selected ? 'selected' : ''} ${!session.alive && !session.resumable ? 'dead' : ''}`}
       onClick={onClick}
     >
+      <span class={`session-dot-indicator ${dotState}`} />
       <div class="session-content">
-        <div class={`session-title${session.unread ? ' unread' : ''}`}>{session.title}</div>
+        <div class="session-title-row">
+          <span class="session-title">{session.title}</span>
+          <span class="session-time">{formatAge(session.created_at)}</span>
+        </div>
         <div class="session-meta">
           {session.status?.label && (
-            <>
-              <span class="session-status-label">{session.status.label}</span>
-              <span class="session-meta-sep">·</span>
-            </>
+            <span class="session-status-label">{session.status.label}</span>
           )}
-          <span class="session-time">{formatAge(session.created_at)}</span>
-          {session.kind !== 'shell' && (
-            <>
-              <span class="session-meta-sep">·</span>
-              <span>{session.kind}</span>
-            </>
+          {showKind && (
+            <span>{session.kind}</span>
           )}
         </div>
       </div>
-      {indicator && (
-        <div class="session-indicator">
-          <span class={`session-indicator-dot ${indicator}`} />
-        </div>
-      )}
       {onClose && closeAction && (
         <button
           class={`session-close-btn ${closeAction}`}
@@ -379,7 +377,8 @@ function FolderGroup({
 }) {
   const [expanded, setExpanded] = useState(true)
   const [showMore, setShowMore] = useState(false)
-  const dotColor = folderDotColor(folder)
+  const hasWorking = folderHasWorkingSessions(folder)
+  const hasUnread = folderHasUnreadSessions(folder)
 
   // Split sessions into visible and collapsed ("show more")
   const visible: Session[] = []
@@ -393,6 +392,9 @@ function FolderGroup({
     <div class="folder">
       <div class="folder-header" onClick={() => setExpanded(e => !e)}>
         <div class={`folder-chevron ${expanded ? 'open' : ''}`}>▶</div>
+        {(hasWorking || hasUnread) && (
+          <span class={`folder-dot ${hasWorking ? 'working' : 'unread'}`} />
+        )}
         <div class="folder-name">{folder.name}</div>
         <LaunchButton cwd={folder.path} className="folder-launch-btn" />
       </div>
@@ -1012,7 +1014,7 @@ function App() {
   const [connState, setConnState] = useState<ConnectionState>('connecting')
   const [ctrlArmed, setCtrlArmed] = useState(false)
   const [launchers, setLaunchers] = useState<LauncherDef[]>([])
-  const [, forceUpdate] = useState(0) // re-render on sidebar state change
+  const [sidebarVersion, forceUpdate] = useState(0) // re-render on sidebar state change
   const terminalInputRef = useRef<((data: string) => void) | null>(null)
   const dismissedIds = useRef(new Set<string>())
   const deviceId = useMemo(() => getDeviceId(), [])
@@ -1105,11 +1107,11 @@ function App() {
   const allFolders = useMemo(() => groupByFolder(filteredSessions), [filteredSessions])
   const folders = useMemo(
     () => allFolders.filter(f => sidebarState.isFolderVisible(f.path)),
-    [allFolders],
+    [allFolders, sidebarVersion],
   )
   const hiddenFolders = useMemo(
     () => allFolders.filter(f => !sidebarState.isFolderVisible(f.path)),
-    [allFolders],
+    [allFolders, sidebarVersion],
   )
   const selected = useMemo(
     () => sessions.find(s => s.id === selectedId) ?? null,

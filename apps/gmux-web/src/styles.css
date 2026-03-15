@@ -1,35 +1,32 @@
-/* gmux — session orchestration UI
-   Dark, minimal, clean — aligned with gmux.dev landing page */
+/* gmux — session orchestration UI */
 
-@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:ital,wght@1,400;1,500&family=Source+Sans+3:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=JetBrains+Mono:ital,wght@1,400;1,500&family=Source+Sans+3:wght@400;500;600;700&display=swap');
 
 :root {
-  /* Surfaces */
-  --bg: oklch(13% 0.015 250);
-  --bg-sidebar: oklch(16% 0.015 250);
+  /* Surfaces — widened gaps for clearer distinction */
+  --bg: oklch(12% 0.015 250);
+  --bg-sidebar: oklch(16.5% 0.015 250);
   --bg-surface: oklch(19% 0.015 250);
-  --bg-hover: oklch(20% 0.015 250);
-  --bg-selected: oklch(22% 0.02 250);
+  --bg-hover: oklch(21% 0.015 250);
+  --bg-selected: oklch(24% 0.02 250);
 
-  /* Text */
-  --text: oklch(88% 0.01 250);
-  --text-secondary: oklch(65% 0.01 250);
-  --text-muted: oklch(48% 0.01 250);
+  /* Text — 3 strongly differentiated tiers */
+  --text: oklch(90% 0.01 250);
+  --text-secondary: oklch(55% 0.01 250);
+  --text-muted: oklch(38% 0.015 250);
 
   /* Borders */
   --border: oklch(22% 0.015 250);
   --border-strong: oklch(28% 0.015 250);
 
-  /* Accent */
+  /* Accent — working state */
   --accent: oklch(72% 0.1 195);
 
+  /* Unread — warm amber, clearly distinct from cyan */
+  --unread: oklch(78% 0.12 70);
+
   /* Status */
-  --status-active: oklch(72% 0.14 145);
-  --status-attention: oklch(76% 0.14 85);
-  --status-success: oklch(72% 0.14 145);
   --status-error: oklch(65% 0.18 25);
-  --status-paused: oklch(48% 0.01 250);
-  --status-info: oklch(68% 0.08 250);
 
   /* Sizing */
   --sidebar-width: 272px;
@@ -82,18 +79,19 @@ body {
   height: var(--header-height);
   display: flex;
   align-items: center;
-  padding: 0 14px;
+  padding: 0 12px 0 14px;
   gap: 8px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .sidebar-logo {
-  font-family: 'Instrument Sans', sans-serif;
-  font-size: 14px;
+  font-family: 'Source Sans 3', sans-serif;
+  font-size: 13px;
   font-weight: 700;
-  letter-spacing: -0.04em;
-  color: var(--text);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
   line-height: 1;
 }
 
@@ -101,16 +99,16 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 18px;
-  padding: 0 6px;
+  min-height: 16px;
+  padding: 0 5px;
   border-radius: 999px;
   background: oklch(22% 0.015 250);
   color: var(--text-muted);
-  font-size: 10px;
-  font-weight: 500;
+  font-size: 9px;
+  font-weight: 600;
   line-height: 1;
-  letter-spacing: 0.01em;
-  transform: translateY(0.5px);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .sidebar-scroll {
@@ -136,13 +134,15 @@ body {
 /* ── Folder ── */
 
 .folder + .folder {
-  margin-top: 10px;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
 }
 
 .folder-header {
   display: flex;
   align-items: center;
-  padding: 3px 12px 3px 14px;
+  padding: 8px 12px 4px 14px;
   cursor: pointer;
   user-select: none;
   gap: 6px;
@@ -237,7 +237,7 @@ body {
   cursor: pointer;
   text-align: left;
   transition: background 0.1s ease;
-  color: var(--text-primary);
+  color: var(--text);
   font-size: 13px;
   white-space: nowrap;
 }
@@ -263,7 +263,7 @@ body {
 
 .launch-inline-divider {
   height: 1px;
-  background: var(--border-subtle);
+  background: var(--border);
   margin: 4px 0;
 }
 
@@ -279,15 +279,15 @@ body {
 }
 
 .folder-chevron {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
   transition: transform 0.15s ease;
-  font-size: 9px;
+  font-size: 8px;
 }
 
 .folder-chevron.open {
@@ -295,8 +295,10 @@ body {
 }
 
 .folder-name {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
   color: var(--text-secondary);
   flex: 1;
   overflow: hidden;
@@ -311,6 +313,14 @@ body {
   flex-shrink: 0;
 }
 
+.folder-dot.working {
+  background: var(--accent);
+}
+
+.folder-dot.unread {
+  background: var(--unread);
+}
+
 .folder-sessions {
   overflow: hidden;
   padding-top: 1px;
@@ -321,9 +331,9 @@ body {
 .session-item {
   display: flex;
   align-items: flex-start;
-  padding: 6px 12px 6px 14px;
+  padding: 5px 12px 5px 14px;
   cursor: pointer;
-  gap: 0;
+  gap: 8px;
   transition: background 0.1s;
   position: relative;
 }
@@ -336,12 +346,53 @@ body {
   background: var(--bg-selected);
 }
 
+.session-item.selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 0 1px 1px 0;
+}
+
+/* Status dot — left of title, vertically centered on first line */
+.session-dot-indicator {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-top: 5px; /* center with first line of text */
+}
+
+.session-dot-indicator.working {
+  background: var(--accent);
+  animation: subtle-pulse 2.5s ease-in-out infinite;
+}
+
+.session-dot-indicator.unread {
+  background: var(--unread);
+}
+
+/* Invisible placeholder to keep alignment when no dot */
+.session-dot-indicator.none {
+  visibility: hidden;
+}
+
 .session-content {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 1px;
+}
+
+.session-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
 }
 
 .session-title {
@@ -351,25 +402,27 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  line-height: 1.3;
-}
-
-.session-item.selected .session-title {
-  color: var(--text);
+  line-height: 1.35;
+  flex: 1;
+  min-width: 0;
 }
 
 .session-item.dead .session-title {
   color: var(--text-secondary);
 }
 
-.session-title.unread {
-  font-weight: 600;
+.session-time {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  line-height: 1.35;
 }
 
 .session-meta {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   font-size: 11px;
   color: var(--text-muted);
   line-height: 1.3;
@@ -377,35 +430,6 @@ body {
 
 .session-status-label {
   color: var(--text-secondary);
-}
-
-.session-meta-sep {
-  opacity: 0.4;
-}
-
-.session-time {
-  font-variant-numeric: tabular-nums;
-}
-
-/* Session status indicator — right-aligned, only shown for active/attention */
-.session-indicator {
-  flex-shrink: 0;
-  width: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  align-self: center;
-}
-
-.session-indicator-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-}
-
-.session-indicator-dot.working {
-  background: var(--accent);
-  animation: subtle-pulse 2.5s ease-in-out infinite;
 }
 
 @keyframes subtle-pulse {
@@ -416,7 +440,7 @@ body {
 /* ── Close button on session items ── */
 .session-close-btn {
   position: absolute;
-  right: 6px;
+  right: 8px;
   top: 50%;
   transform: translateY(-50%);
   width: 20px;
@@ -436,14 +460,15 @@ body {
 }
 
 .session-item:hover .session-close-btn { opacity: 1; }
-.session-close-btn:hover { background: var(--bg-hover); color: var(--text); }
+.session-item:hover .session-time { opacity: 0; }
+.session-close-btn:hover { background: oklch(28% 0.015 250); color: var(--text); }
 
 /* ── Show more / hide folder buttons ── */
 .show-more-btn,
 .folder-hide-btn {
   display: block;
   width: 100%;
-  padding: 4px 14px;
+  padding: 3px 14px 3px 29px; /* align with session text (14px + 7px dot + 8px gap) */
   border: none;
   background: transparent;
   color: var(--text-muted);
@@ -459,7 +484,7 @@ body {
 
 /* ── Add folder button + picker ── */
 .sidebar-add-folder {
-  padding: 8px 12px;
+  padding: 10px 12px 8px;
 }
 
 .add-folder-btn {
@@ -506,7 +531,7 @@ body {
 
 .folder-picker-item:hover { background: var(--bg-hover); }
 
-/* Status dot — used in header and detail panel only */
+/* Status dot — used in header */
 .session-dot {
   border-radius: 50%;
   display: inline-block;
@@ -515,6 +540,7 @@ body {
 
 .session-dot.working { background: var(--accent); }
 .session-dot.idle    { background: var(--text-muted); }
+.session-dot.unread  { background: var(--unread); }
 
 /* ── Main Panel ── */
 
@@ -553,7 +579,7 @@ body {
 }
 
 .main-header-title {
-  font-family: 'Instrument Sans', sans-serif;
+  font-family: 'Source Sans 3', sans-serif;
   font-size: 13px;
   font-weight: 600;
   color: var(--text);
@@ -593,6 +619,7 @@ body {
   font-weight: 500;
   white-space: nowrap;
   flex-shrink: 0;
+  color: var(--text-secondary);
 }
 
 .main-header-status.working { color: var(--accent); }
@@ -673,7 +700,6 @@ body {
   background: oklch(from #0f141a l c h / 0.85);
   color: var(--text-muted);
   font-size: 13px;
-  font-family: 'JetBrains Mono', monospace;
   z-index: 10;
 }
 
@@ -738,9 +764,8 @@ body {
 }
 
 .state-title {
-  font-family: 'Instrument Sans', sans-serif;
   font-size: 15px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-secondary);
 }
 
@@ -760,14 +785,13 @@ body {
 }
 
 .empty-state-icon {
-  font-size: 32px;
-  opacity: 0.2;
+  font-size: 28px;
+  opacity: 0.15;
 }
 
 .empty-state-title {
-  font-family: 'Instrument Sans', sans-serif;
   font-size: 15px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-secondary);
 }
 
@@ -778,9 +802,10 @@ body {
 }
 
 .empty-state-launch-btn {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Source Sans 3', sans-serif;
   font-size: 13px;
-  padding: 8px 16px;
+  font-weight: 600;
+  padding: 10px 20px;
   border-radius: 6px;
   border: 1px solid var(--border);
   background: var(--bg-surface);
@@ -789,7 +814,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
   transition: border-color 0.15s, background 0.15s;
 }
 
@@ -804,8 +829,8 @@ body {
 }
 
 .empty-state-launch-btn .launch-desc {
-  font-family: 'Source Sans 3', sans-serif;
   font-size: 11px;
+  font-weight: 400;
   color: var(--text-muted);
 }
 
@@ -936,7 +961,7 @@ body {
   }
 
   .session-item {
-    padding: 8px 10px 8px 20px;
+    padding: 8px 10px 8px 14px;
   }
 }
 
