@@ -848,10 +848,8 @@ function TerminalView({
     }
   }, [session.id, applyPassiveTerminalSize])
 
-  const terminalTooLargeForViewport = !isResizeOwner
-    && !!viewportSize && !!session.terminal_cols && !!session.terminal_rows
-    && (session.terminal_cols > viewportSize.cols || session.terminal_rows > viewportSize.rows)
-  const showResizeOverlay = session.alive && terminalTooLargeForViewport
+  const showResizeOverlay = session.alive && !isResizeOwner
+    && !!session.terminal_cols && !!session.terminal_rows
 
   if (USE_MOCK) {
     return (
@@ -873,7 +871,7 @@ function TerminalView({
   }
 
   return (
-    <div class="terminal-shell">
+    <>
       {showResizeOverlay && (
         <div class="terminal-resize-overlay">
           <span>This terminal is sized for another device.</span>
@@ -882,14 +880,16 @@ function TerminalView({
           </button>
         </div>
       )}
-      <div ref={containerRef} class="terminal-container" />
-      {termLoading && (
-        <div class="terminal-loading">
-          <span class="terminal-loading-dot" />
-          Starting…
-        </div>
-      )}
-    </div>
+      <div class="terminal-shell">
+        <div ref={containerRef} class="terminal-container" />
+        {termLoading && (
+          <div class="terminal-loading">
+            <span class="terminal-loading-dot" />
+            Starting…
+          </div>
+        )}
+      </div>
+    </>
   )
 }
 
