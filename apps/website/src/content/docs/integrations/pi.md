@@ -32,13 +32,18 @@ Resumable sessions are deduplicated: if you're already running a session that ma
 
 ### Launch from the UI
 
-Pi appears in the launch menu. Click it to start a new pi session in any folder that already has sessions.
+Pi appears in the launch menu only when it is available on the current machine. `gmuxd` checks this at startup by running `pi --version`; if that fails, the pi launcher is omitted from the UI.
 
 ## How it works
 
 ### Detection
 
-gmux recognizes pi by scanning the command for a `pi` or `pi-coding-agent` binary name. This works with direct invocation, full paths, `npx`, `nix run`, and other wrappers:
+There are two separate pi checks:
+
+- **availability discovery** in `gmuxd`: run `pi --version` at startup to see whether pi is installed and the pi launcher should be shown
+- **runtime matching** in `gmuxr`: scan the launched command for a `pi` or `pi-coding-agent` binary name
+
+The runtime matching works with direct invocation, full paths, `npx`, `nix run`, and other wrappers:
 
 ```bash
 gmuxr pi                              # ✓ matched

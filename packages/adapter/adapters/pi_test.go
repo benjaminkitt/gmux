@@ -63,6 +63,14 @@ func TestPiEnvNil(t *testing.T) {
 	}
 }
 
+func TestPiDiscover(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test: depends on pi being installed")
+	}
+	// LookPath-based: result depends on the test machine.
+	_ = NewPi().Discover()
+}
+
 func TestPiMonitorPlainOutput(t *testing.T) {
 	if NewPi().Monitor([]byte("some output")) != nil {
 		t.Fatal("should return nil for non-spinner output")

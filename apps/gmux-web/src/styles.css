@@ -646,20 +646,42 @@ body {
   color: var(--text-secondary);
 }
 
-.empty-state-hint {
-  font-size: 13px;
-  max-width: 300px;
-  text-align: center;
-  line-height: 1.5;
+.empty-state-launchers {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
 }
 
-.empty-state code {
+.empty-state-launch-btn {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
+  font-size: 13px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
   background: var(--bg-surface);
-  padding: 2px 7px;
-  border-radius: 4px;
-  color: var(--accent);
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.empty-state-launch-btn:hover {
+  border-color: var(--accent);
+  background: oklch(from var(--accent) l c h / 0.08);
+}
+
+.empty-state-launch-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.empty-state-launch-btn .launch-desc {
+  font-family: 'Source Sans 3', sans-serif;
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 /* ── Mobile ── */

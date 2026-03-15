@@ -13,7 +13,7 @@ func DefaultFallback() adapter.Adapter { return NewShell() }
 
 // AllLaunchers derives the UI launch presets from registered adapters and the
 // shell fallback. Adapters are returned in registration order, with shell last.
-// This is the shared launch-menu source used by both gmuxr and gmuxd.
+// gmuxd filters this compiled launcher list based on per-host availability.
 func AllLaunchers() []adapter.Launcher {
 	var launchers []adapter.Launcher
 	seen := map[string]struct{}{}
@@ -49,6 +49,7 @@ type Shell struct{}
 func NewShell() *Shell { return &Shell{} }
 
 func (g *Shell) Name() string          { return "shell" }
+func (g *Shell) Discover() bool        { return true }
 func (g *Shell) Match(_ []string) bool { return true }
 
 func (g *Shell) Env(_ adapter.EnvContext) []string { return nil }

@@ -27,6 +27,7 @@ func init() {
 type MyApp struct{}
 
 func (m *MyApp) Name() string { return "myapp" }
+func (m *MyApp) Discover() bool { return true }
 
 func (m *MyApp) Match(cmd []string) bool {
     for _, arg := range cmd {
@@ -45,6 +46,7 @@ func (m *MyApp) Monitor(output []byte) *adapter.Status { return nil }
 
 That's enough for a valid adapter. It:
 
+- reports whether the tool is available on this machine with `Discover()`
 - activates when the command matches `myapp`
 - contributes no extra environment yet
 - reports no custom status yet
@@ -71,17 +73,18 @@ func (m *MyApp) Launchers() []adapter.Launcher {
 }
 ```
 
-`gmuxd` derives the launch menu from the compiled adapter set by checking which adapters implement `Launchable`.
+`gmuxd` derives the launch menu from the compiled adapter set by checking which adapters implement `Launchable`. It then filters that menu using the adapter's required `Discover()` method.
 
 Adapters may expose zero, one, or many launch presets. The built-in shell fallback also implements `Launchable`, so shell appears in the menu without a separate special registry.
 
 ## The base interface
 
-Every adapter implements four methods:
+Every adapter implements five methods:
 
 ```go
 type Adapter interface {
     Name() string
+    Discover() bool
     Match(command []string) bool
     Env(ctx EnvContext) []string
     Monitor(output []byte) *Status
@@ -89,6 +92,8 @@ type Adapter interface {
 ```
 
 **`Name()`** returns a short identifier like `"pi"` or `"myapp"`.
+
+**`Discover()`** reports whether the backing tool is available on the current machine. `gmuxd` runs this in parallel for all compiled adapters during startup and only includes launchers from adapters whose discovery succeeds. Keep it cheap and deterministic. For example, shell returns `true`, while pi runs `pi --version` and checks whether it succeeds.
 
 **`Match(cmd)`** receives the full command array and decides whether this adapter should handle it. Match on `filepath.Base(arg)` so full paths and wrappers work. Stop scanning at `"--"`.
 
@@ -146,6 +151,7 @@ Implement this if the adapter should contribute launch presets to the UI.
 - return one launcher for a simple tool entry
 - return multiple launchers if one adapter supports multiple presets
 - return none by not implementing the interface at all
+- remember that launch availability is controlled separately by the required `Discover()` method
 
 ### `SessionFiler`
 
@@ -191,7 +197,7 @@ Implement this if your tool supports resuming previous sessions.
 
 An adapter implements only what it needs:
 
-| Adapter | Base | Launchable | SessionFiler | FileMonitor | Resumer |
+| Adapter | Base (`Discover`/`Match`/`Env`/`Monitor`) | Launchable | SessionFiler | FileMonitor | Resumer |
 |---------|------|------------|-------------|-------------|---------|
 | Shell | ✓ | ✓ | — | — | — |
 | Pi | ✓ | ✓ | ✓ | ✓ | ✓ |

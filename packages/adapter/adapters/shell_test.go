@@ -22,6 +22,12 @@ func TestShellName(t *testing.T) {
 	}
 }
 
+func TestShellDiscoverAlwaysTrue(t *testing.T) {
+	if !NewShell().Discover() {
+		t.Fatal("shell should always be discoverable")
+	}
+}
+
 func TestShellEnvNil(t *testing.T) {
 	if env := NewShell().Env(adapter.EnvContext{}); env != nil {
 		t.Fatalf("expected nil, got %v", env)

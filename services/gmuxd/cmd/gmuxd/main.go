@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -26,14 +27,66 @@ type LaunchConfig struct {
 	Launchers       []adapter.Launcher `json:"launchers"`
 }
 
-// discoverLaunchers derives launchers from the compiled adapter set.
+// discoverLaunchers derives launchers from the compiled adapter set and keeps
+// only the adapters that are available on this machine.
 func discoverLaunchers() LaunchConfig {
-	launchers := adapters.AllLaunchers()
-	log.Printf("launchers: discovered %d adapter(s): %v", len(launchers), launcherNames(launchers))
+	adapterList := append([]adapter.Adapter{}, adapters.All...)
+	adapterList = append(adapterList, adapters.DefaultFallback())
+
+	availableByName := discoverAvailableAdapters(adapterList)
+	launchers := launchersForAdapters(adapterList, availableByName)
+
+	log.Printf("launchers: discovered %d adapter(s): %v", len(launchers), launcherStates(launchers))
 	return LaunchConfig{
 		DefaultLauncher: "shell",
 		Launchers:       launchers,
 	}
+}
+
+func discoverAvailableAdapters(adapterList []adapter.Adapter) map[string]bool {
+	availableByName := make(map[string]bool, len(adapterList))
+
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for _, a := range adapterList {
+		a := a
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			available := a.Discover()
+			mu.Lock()
+			availableByName[a.Name()] = available
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+
+	return availableByName
+}
+
+func launchersForAdapters(adapterList []adapter.Adapter, availableByName map[string]bool) []adapter.Launcher {
+	var launchers []adapter.Launcher
+	seen := map[string]struct{}{}
+
+	for _, a := range adapterList {
+		launchable, ok := a.(adapter.Launchable)
+		if !ok {
+			continue
+		}
+		for _, l := range launchable.Launchers() {
+			if _, ok := seen[l.ID]; ok {
+				continue
+			}
+			if !availableByName[a.Name()] {
+				continue
+			}
+			seen[l.ID] = struct{}{}
+			l.Available = true
+			launchers = append(launchers, l)
+		}
+	}
+
+	return launchers
 }
 
 // resolveGmuxr finds the gmuxr binary.
@@ -52,12 +105,16 @@ func resolveGmuxr() string {
 	return ""
 }
 
-func launcherNames(ls []adapter.Launcher) []string {
-	names := make([]string, len(ls))
+func launcherStates(ls []adapter.Launcher) []string {
+	states := make([]string, len(ls))
 	for i, l := range ls {
-		names[i] = l.ID
+		state := "unavailable"
+		if l.Available {
+			state = "available"
+		}
+		states[i] = fmt.Sprintf("%s(%s)", l.ID, state)
 	}
-	return names
+	return states
 }
 
 // launchGmuxr starts a detached gmuxr process with the given command and cwd.
@@ -220,7 +277,7 @@ func main() {
 			return
 		}
 
-		// Resolve command from launcher_id if no explicit command
+		// Resolve command from launcher_id if no explicit command.
 		if len(req.Command) == 0 && req.LauncherID != "" {
 			cfg := launchConfig
 			for _, l := range cfg.Launchers {
@@ -228,6 +285,10 @@ func main() {
 					req.Command = l.Command
 					break
 				}
+			}
+			if len(req.Command) == 0 {
+				writeError(w, http.StatusBadRequest, "launcher_unavailable", fmt.Sprintf("launcher %q is not available on this system", req.LauncherID))
+				return
 			}
 		}
 

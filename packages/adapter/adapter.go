@@ -19,6 +19,11 @@ type Adapter interface {
 	// Name returns the adapter identifier (e.g. "pi", "shell").
 	Name() string
 
+	// Discover reports whether this adapter's backing tool is available on
+	// the current machine. gmuxd calls this during startup to decide which
+	// adapter launchers should be exposed on this system.
+	Discover() bool
+
 	// Match returns true if this adapter handles the given command.
 	Match(command []string) bool
 
@@ -41,11 +46,13 @@ type EnvContext struct {
 }
 
 // Launcher describes how to start a new session with a given adapter.
+// Available is populated by gmuxd after adapter discovery runs on the current host.
 type Launcher struct {
 	ID          string   `json:"id"`
 	Label       string   `json:"label"`
 	Command     []string `json:"command"`
 	Description string   `json:"description,omitempty"`
+	Available   bool     `json:"available"`
 }
 
 // BaseName extracts the base name of a command argument, stripping path.

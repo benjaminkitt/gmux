@@ -22,6 +22,7 @@ That split is why the adapter system is a set of small interfaces instead of one
 
 | Concern | Component | How |
 |---|---|---|
+| Adapter availability detection | `gmuxd` | `Adapter.Discover()` |
 | Command matching | `gmuxr` | `Adapter.Match()` |
 | Child env injection | `gmuxr` | `Adapter.Env()` |
 | PTY output monitoring | `gmuxr` | `Adapter.Monitor()` |
@@ -59,9 +60,31 @@ Adapter selection happens entirely in `gmuxr`:
 
 This keeps matching cheap and predictable. A false negative is low-cost because the shell adapter still gives basic behavior.
 
+## Adapter discovery and available launchers
+
+Every adapter now implements a required discovery probe:
+
+```go
+type Adapter interface {
+    Name() string
+    Discover() bool
+    Match(command []string) bool
+    Env(ctx EnvContext) []string
+    Monitor(output []byte) *Status
+}
+```
+
+`gmuxd` runs `Discover()` for every compiled adapter in parallel during startup.
+That tells gmux which adapters are actually usable on the current machine.
+
+For the built-in adapters:
+
+- **shell** always returns `true`
+- **pi** runs `pi --version` and returns true only if the command succeeds
+
 ## Launchers and `Launchable`
 
-Launch menu entries are now derived from adapter instances instead of a parallel global launcher registry.
+Launch menu entries are still derived from adapter instances instead of a parallel global launcher registry.
 
 Adapters that want to appear in the UI implement:
 
@@ -71,14 +94,16 @@ type Launchable interface {
 }
 ```
 
-`gmuxd` aggregates launchers from the compiled adapter set by checking which adapters implement `Launchable`.
+`gmuxd` aggregates launchers from the compiled adapter set by checking which adapters implement `Launchable`, then filters that list based on each adapter's `Discover()` result.
 
 A few important consequences:
 
 - launch menu support is optional, like other adapter capabilities
+- adapter availability is mandatory, because every adapter must implement `Discover()`
 - one adapter can expose zero, one, or many launch presets
 - `gmuxd` no longer shells out to `gmuxr adapters` to discover launchers
 - the shell fallback also implements `Launchable`, so shell appears in the UI without a separate special-case launcher registry
+- unavailable launchers are omitted from the launch config entirely
 
 The current built-in launcher ordering is simple:
 

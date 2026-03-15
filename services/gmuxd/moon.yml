@@ -12,7 +12,7 @@ tasks:
       - "cmd/**/*"
       - "internal/**/*"
       - "go.mod"
-      - "../../packages/adapter/**/*.go"
+      - "/packages/adapter/**/*.go"
   test:
     command: go test ./...
   lint:

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -32,6 +33,13 @@ type Pi struct{}
 func NewPi() *Pi { return &Pi{} }
 
 func (p *Pi) Name() string { return "pi" }
+
+func (p *Pi) Discover() bool {
+	// Fast path: check if 'pi' binary exists on PATH without executing it.
+	// Running `pi --version` is too slow (~3s for Node.js startup).
+	_, err := exec.LookPath("pi")
+	return err == nil
+}
 
 // Match returns true if any argument in the command is the `pi` or
 // `pi-coding-agent` binary.

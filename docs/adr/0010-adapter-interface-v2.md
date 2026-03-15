@@ -46,8 +46,9 @@ Add `./packages/adapter` to `go.work`.
 
 ```go
 type Adapter interface {
-    // Identity
+    // Identity + machine availability
     Name() string
+    Discover() bool
     Match(command []string) bool
 
     // gmuxr hooks
@@ -56,8 +57,9 @@ type Adapter interface {
 }
 ```
 
-This is the base. Shell implements this plus an optional launch-menu
-capability. Every adapter must implement the base interface.
+This is the base. Every adapter must implement the base interface.
+`Discover()` is required so gmuxd can probe which adapter-backed tools
+are actually available on the current machine.
 
 ### Opt-in capability interfaces
 
@@ -90,11 +92,14 @@ type Launcher struct {
 
 Called by gmuxd when building the launch menu it serves to the UI.
 Launchers are derived from the compiled adapter set by checking which
-adapters implement `Launchable`.
+adapters implement `Launchable`, then filtered by each adapter's
+`Discover()` result.
 
-This keeps launch-menu support optional:
+This keeps launch-menu support optional while keeping launch availability
+explicit:
 - adapters can expose zero launchers by not implementing the interface
 - one adapter can expose multiple launch presets
+- every adapter must still implement `Discover()` to report availability
 - shell can participate without needing a separate special registry
 
 #### SessionFiler — session file discovery and parsing

@@ -3,7 +3,7 @@ title: Adapters
 description: How gmux understands what your process is doing.
 ---
 
-Adapters teach gmux how to interpret specific tools. When you launch a session, gmux automatically detects what you're running and activates the right adapter.
+Adapters teach gmux how to interpret specific tools. When you launch a session, gmux automatically detects what you're running and activates the right adapter. On the `gmuxd` side, gmux also checks which adapter-backed tools are actually installed on the current machine so the launch UI only shows integrations that are available there.
 
 This page is the high-level overview. For implementation details, see [Writing an Adapter](/develop/writing-adapters). For the runtime model behind `gmuxr`, `gmuxd`, session files, and resume, see [Adapter Architecture](/develop/adapter-architecture).
 
@@ -28,6 +28,13 @@ gmuxr -- make build # → shell adapter
 ```
 
 If no specific adapter matches, the **shell** adapter takes over. It tracks terminal title changes so your shell's working directory appears in the sidebar, but it doesn't report rich activity status.
+
+For launchers, gmuxd also probes each compiled adapter at startup. Built-in examples:
+
+- **shell** is always available
+- **pi** is only available when `pi --version` succeeds on that machine
+
+That lets the UI hide adapters that gmux knows about in principle but that are not usable on the current host.
 
 ## Beyond status: session files
 

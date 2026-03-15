@@ -32,6 +32,10 @@ type Adapter interface {
     // Name returns the adapter identifier (e.g. "pi", "pytest", "generic").
     Name() string
 
+    // Discover reports whether this adapter's backing tool is available
+    // on the current machine. gmuxd uses this to decide whether to expose launchers.
+    Discover() bool
+
     // Match returns true if this adapter handles the given command.
     // Adapters are tried in priority order; first match wins.
     Match(command []string) bool
