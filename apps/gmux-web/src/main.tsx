@@ -401,33 +401,34 @@ function FolderGroup({
             onClose={() => onCloseSession(s)}
           />
         ))}
-        {visible.length === 0 && collapsed.length > 0 && (
-          <button
-            class="folder-hide-btn"
-            onClick={() => onHideFolder(folder.path)}
-          >
-            Hide folder
-          </button>
-        )}
-        {collapsed.length > 0 && (
-          <>
+        <div class="folder-actions">
+          {collapsed.length > 0 && (
             <button
-              class="show-more-btn"
+              class="folder-action-btn"
               onClick={() => setShowMore(v => !v)}
             >
               {showMore ? 'Show less' : `Show ${collapsed.length} more`}
             </button>
-            {showMore && collapsed.map(s => (
-              <SessionItem
-                key={s.id}
-                session={s}
-                selected={selectedId === s.id}
-                onClick={() => onSelect(s.id)}
-                onClose={() => onCloseSession(s)}
-              />
-            ))}
-          </>
-        )}
+          )}
+          {collapsed.length > 0 && (
+            <span class="folder-action-sep">·</span>
+          )}
+          <button
+            class="folder-action-btn"
+            onClick={() => onHideFolder(folder.path)}
+          >
+            Hide
+          </button>
+        </div>
+        {showMore && collapsed.map(s => (
+          <SessionItem
+            key={s.id}
+            session={s}
+            selected={selectedId === s.id}
+            onClick={() => onSelect(s.id)}
+            onClose={() => onCloseSession(s)}
+          />
+        ))}
       </div>
     </div>
   )

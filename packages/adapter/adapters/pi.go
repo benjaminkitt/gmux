@@ -233,9 +233,9 @@ func (p *Pi) ParseNewLines(lines []string) []adapter.FileEvent {
 
 			case "assistant":
 				if msg.Message.StopReason == "stop" {
-					// Assistant finished its turn — no more tool calls.
+					// Assistant finished its turn — clear status.
 					events = append(events, adapter.FileEvent{
-						Status: &adapter.Status{Label: "waiting for input"},
+						Status: &adapter.Status{},
 					})
 				}
 			}

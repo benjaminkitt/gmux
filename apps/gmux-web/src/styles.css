@@ -431,24 +431,32 @@ body {
   .launch-container.folder-launch-btn { opacity: 1; }
 }
 
-/* ── Show more / hide folder buttons ── */
-.show-more-btn,
-.folder-hide-btn {
-  display: block;
-  width: 100%;
+/* ── Folder actions (show more · hide) ── */
+.folder-actions {
+  display: flex;
+  align-items: center;
   padding: 3px 14px 3px 29px; /* align with session text (14px + 7px dot + 8px gap) */
+  gap: 6px;
+}
+
+.folder-action-btn {
   border: none;
   background: transparent;
   color: var(--text-muted);
   font-size: 12px;
   font-family: 'Source Sans 3', sans-serif;
   cursor: pointer;
-  text-align: left;
+  padding: 0;
   transition: color 0.1s;
 }
 
-.show-more-btn:hover,
-.folder-hide-btn:hover { color: var(--text-secondary); }
+.folder-action-btn:hover { color: var(--text-secondary); }
+
+.folder-action-sep {
+  color: var(--text-muted);
+  font-size: 12px;
+  opacity: 0.5;
+}
 
 /* ── Sidebar footer ── */
 .sidebar-footer {
