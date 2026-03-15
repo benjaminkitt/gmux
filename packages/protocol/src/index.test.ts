@@ -15,7 +15,6 @@ describe('protocol schemas', () => {
       pid: 12345,
       title: 'test session',
       status: { label: 'thinking', working: true },
-      resize_owner_id: 'device-1',
       terminal_cols: 120,
       terminal_rows: 40,
     })
@@ -24,7 +23,6 @@ describe('protocol schemas', () => {
     expect(result.alive).toBe(true)
     expect(result.status?.working).toBe(true)
     expect(result.status?.label).toBe('thinking')
-    expect(result.resize_owner_id).toBe('device-1')
     expect(result.terminal_cols).toBe(120)
     expect(result.terminal_rows).toBe(40)
   })

@@ -39,7 +39,6 @@ function toUISession(s: ProtocolSession): Session {
     resume_key: (s as any).resume_key ?? '',
     close_action: s.close_action ?? (s.alive ? 'dismiss' : undefined),
     socket_path: s.socket_path ?? '',
-    resize_owner_id: (s as any).resize_owner_id ?? undefined,
     terminal_cols: (s as any).terminal_cols ?? undefined,
     terminal_rows: (s as any).terminal_rows ?? undefined,
   }
@@ -114,27 +113,6 @@ async function launchSession(launcherId: string, cwd?: string): Promise<void> {
   })
 }
 
-
-function getDeviceId(): string {
-  const key = 'gmux_device_id'
-  try {
-    const existing = localStorage.getItem(key)
-    if (existing) return existing
-    const created = globalThis.crypto?.randomUUID?.() ?? `device-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`
-    localStorage.setItem(key, created)
-    return created
-  } catch {
-    return 'device-fallback'
-  }
-}
-
-async function reportResizeOwner(sessionId: string, deviceId: string, cols: number, rows: number): Promise<void> {
-  await fetch('/trpc/sessions.setResizeOwner', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId, deviceId, cols, rows }),
-  })
-}
 
 // ── LaunchButton — transforms into inline menu on click ──
 //
@@ -584,13 +562,11 @@ function ctrlSequenceFor(data: string): string | null {
 
 function TerminalView({
   session,
-  currentDeviceId,
   ctrlArmed,
   onCtrlConsumed,
   onInputReady,
 }: {
   session: Session
-  currentDeviceId: string
   ctrlArmed: boolean
   onCtrlConsumed: () => void
   onInputReady?: (send: ((data: string) => void) | null) => void
@@ -604,14 +580,17 @@ function TerminalView({
   const currentSessionId = useRef(session.id)
   const currentSessionRef = useRef(session)
   const ctrlArmedRef = useRef(ctrlArmed)
-  const deviceIdRef = useRef(currentDeviceId)
+  const isResizeOwnerRef = useRef(false)
   const [termLoading, setTermLoading] = useState(true)
   const [viewportSize, setViewportSize] = useState<TerminalSize | null>(null)
+  const [isResizeOwner, setIsResizeOwner] = useState(false)
 
   currentSessionId.current = session.id
   currentSessionRef.current = session
   ctrlArmedRef.current = ctrlArmed
-  deviceIdRef.current = currentDeviceId
+
+  // Keep ref in sync with state for use inside callbacks.
+  isResizeOwnerRef.current = isResizeOwner
 
   const applyPassiveTerminalSize = useCallback(() => {
     const term = termRef.current
@@ -627,7 +606,9 @@ function TerminalView({
     }
   }, [])
 
-  const claimResizeOwnership = useCallback(() => {
+  // Fit terminal to container and send resize to runner via WS.
+  // Only effective when we're the resize owner (proxy will drop otherwise).
+  const fitAndResize = useCallback(() => {
     const term = termRef.current
     const fit = fitRef.current
     const ws = wsRef.current
@@ -636,10 +617,19 @@ function TerminalView({
     fit.fit()
     const dims = sendResize(ws, fit, term)
     setViewportSize(dims)
-    if (!dims) return
-    void reportResizeOwner(currentSessionId.current, deviceIdRef.current, dims.cols, dims.rows)
   }, [])
 
+  // Send claim_resize over WS to take resize ownership from another device.
+  const claimResize = useCallback(() => {
+    const ws = wsRef.current
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'claim_resize' }))
+    }
+    // Optimistically fit — the proxy will confirm ownership via resize_state.
+    fitAndResize()
+  }, [fitAndResize])
+
+  // Terminal + keyboard setup (stable across session changes).
   useEffect(() => {
     if (!containerRef.current || USE_MOCK) return
     disposed.current = false
@@ -693,20 +683,33 @@ function TerminalView({
     }
     window.addEventListener('keydown', handleGlobalKeydown, true)
 
-    const onResize = () => {
-      const current = currentSessionRef.current
-      if (current.resize_owner_id && current.resize_owner_id !== deviceIdRef.current) {
-        applyPassiveTerminalSize()
+    const onWindowResize = () => {
+      if (!isResizeOwnerRef.current) {
+        // Not the owner — adopt the owner's size from SSE.
+        const current = currentSessionRef.current
+        const fit = fitRef.current
+        if (fit) setViewportSize(getProposedTerminalSize(fit))
+        if (current.terminal_cols && current.terminal_rows && termRef.current) {
+          termRef.current.resize(current.terminal_cols, current.terminal_rows)
+        }
         return
       }
-      claimResizeOwnership()
+      // Owner — fit to our container and send resize.
+      const t = termRef.current
+      const f = fitRef.current
+      const ws = wsRef.current
+      if (t && f) {
+        f.fit()
+        sendResize(ws, f, t)
+        setViewportSize(getProposedTerminalSize(f))
+      }
     }
-    window.addEventListener('resize', onResize)
+    window.addEventListener('resize', onWindowResize)
 
     return () => {
       disposed.current = true
       window.removeEventListener('keydown', handleGlobalKeydown, true)
-      window.removeEventListener('resize', onResize)
+      window.removeEventListener('resize', onWindowResize)
       dataDisposable.dispose()
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
       wsRef.current?.close()
@@ -716,22 +719,24 @@ function TerminalView({
       termRef.current = null
       fitRef.current = null
     }
-  }, [applyPassiveTerminalSize, claimResizeOwnership, onCtrlConsumed, onInputReady])
+  }, [onCtrlConsumed, onInputReady])
 
+  // React to terminal_cols/terminal_rows changes from SSE when not the owner.
   useEffect(() => {
     if (!termRef.current || USE_MOCK) return
-
-    const fit = fitRef.current
-    const otherDeviceOwns = !!session.resize_owner_id && session.resize_owner_id !== currentDeviceId
-    if (otherDeviceOwns) {
+    if (isResizeOwner) {
+      // We're the owner — fit to our own viewport.
+      const fit = fitRef.current
+      if (fit) {
+        fit.fit()
+        setViewportSize(getProposedTerminalSize(fit))
+      }
+    } else {
       applyPassiveTerminalSize()
-      return
     }
-    if (!fit) return
-    fit.fit()
-    setViewportSize(getProposedTerminalSize(fit))
-  }, [session.id, session.resize_owner_id, session.terminal_cols, session.terminal_rows, currentDeviceId, applyPassiveTerminalSize])
+  }, [session.id, session.terminal_cols, session.terminal_rows, isResizeOwner, applyPassiveTerminalSize])
 
+  // WebSocket connection (reconnects when session.id changes).
   useEffect(() => {
     if (!termRef.current || USE_MOCK) return
 
@@ -766,15 +771,46 @@ function TerminalView({
 
       ws.onopen = () => {
         attempt = 0
-        const current = currentSessionRef.current
-        if (current.resize_owner_id && current.resize_owner_id !== deviceIdRef.current) {
-          applyPassiveTerminalSize()
-          return
-        }
-        claimResizeOwnership()
+        // The proxy will send us a resize_state message telling us if
+        // we're the owner. We'll fit/resize in response to that.
       }
 
       ws.onmessage = (ev) => {
+        // Text messages may be JSON control messages from the proxy.
+        if (typeof ev.data === 'string') {
+          try {
+            const msg = JSON.parse(ev.data)
+            if (msg.type === 'resize_state') {
+              const nowOwner = !!msg.is_owner
+              isResizeOwnerRef.current = nowOwner
+              setIsResizeOwner(nowOwner)
+              if (nowOwner) {
+                // We just became the owner — fit to our viewport and resize.
+                const f = fitRef.current
+                const t = termRef.current
+                if (f && t) {
+                  f.fit()
+                  sendResize(wsRef.current, f, t)
+                  setViewportSize(getProposedTerminalSize(f))
+                }
+              } else {
+                // Not the owner — adopt the owner's size from session state.
+                applyPassiveTerminalSize()
+              }
+              return
+            }
+          } catch { /* not JSON — fall through to terminal write */ }
+          // Non-control text message — write to terminal.
+          const data = new TextEncoder().encode(ev.data)
+          if (replay.state !== 'done') {
+            replay.push(data)
+            return
+          }
+          setTermLoading(false)
+          term.write(data)
+          return
+        }
+
         const data = ev.data instanceof ArrayBuffer
           ? new Uint8Array(ev.data)
           : new TextEncoder().encode(ev.data)
@@ -810,12 +846,12 @@ function TerminalView({
       wsRef.current?.close()
       wsRef.current = null
     }
-  }, [session.id, applyPassiveTerminalSize, claimResizeOwnership])
+  }, [session.id, applyPassiveTerminalSize])
 
-  const otherDeviceOwns = !!session.resize_owner_id && session.resize_owner_id !== currentDeviceId
-  const terminalTooLargeForViewport = !!viewportSize && !!session.terminal_cols && !!session.terminal_rows
+  const terminalTooLargeForViewport = !isResizeOwner
+    && !!viewportSize && !!session.terminal_cols && !!session.terminal_rows
     && (session.terminal_cols > viewportSize.cols || session.terminal_rows > viewportSize.rows)
-  const showResizeOverlay = session.alive && otherDeviceOwns && terminalTooLargeForViewport
+  const showResizeOverlay = session.alive && terminalTooLargeForViewport
 
   if (USE_MOCK) {
     return (
@@ -841,7 +877,7 @@ function TerminalView({
       {showResizeOverlay && (
         <div class="terminal-resize-overlay">
           <span>This terminal is sized for another device.</span>
-          <button class="terminal-resize-overlay-btn" onClick={() => claimResizeOwnership()}>
+          <button class="terminal-resize-overlay-btn" onClick={() => claimResize()}>
             Resize for this device
           </button>
         </div>
@@ -995,7 +1031,7 @@ function App() {
   const [sidebarVersion, forceUpdate] = useState(0) // re-render on sidebar state change
   const terminalInputRef = useRef<((data: string) => void) | null>(null)
 
-  const deviceId = useMemo(() => getDeviceId(), [])
+
 
   useEffect(() => { fetchConfig().then(cfg => setLaunchers(cfg.launchers)) }, [])
 
@@ -1192,7 +1228,6 @@ function App() {
         ) : selected && canAttach ? (
           <TerminalView
             session={selected}
-            currentDeviceId={deviceId}
             ctrlArmed={ctrlArmed}
             onCtrlConsumed={handleCtrlConsumed}
           />

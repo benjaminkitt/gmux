@@ -30,7 +30,6 @@ export interface Session {
   resume_key?: string
   close_action?: 'minimize' | 'dismiss'
   socket_path: string
-  resize_owner_id?: string
   terminal_cols?: number
   terminal_rows?: number
 }

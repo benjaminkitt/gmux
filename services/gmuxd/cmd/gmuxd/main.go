@@ -411,39 +411,6 @@ func main() {
 				"data": map[string]any{"pid": pid, "session_id": sessionID},
 			})
 
-		case "resize-owner":
-			if r.Method != http.MethodPost {
-				writeError(w, http.StatusMethodNotAllowed, "bad_request", "method not allowed")
-				return
-			}
-			body, err := io.ReadAll(io.LimitReader(r.Body, 4096))
-			if err != nil {
-				writeError(w, http.StatusBadRequest, "bad_request", "read error")
-				return
-			}
-			var req struct {
-				DeviceID string `json:"device_id"`
-				Cols     uint16 `json:"cols"`
-				Rows     uint16 `json:"rows"`
-			}
-			if err := json.Unmarshal(body, &req); err != nil {
-				writeError(w, http.StatusBadRequest, "bad_request", "invalid JSON")
-				return
-			}
-			if req.DeviceID == "" {
-				writeError(w, http.StatusBadRequest, "bad_request", "device_id is required")
-				return
-			}
-			if req.Cols == 0 || req.Rows == 0 {
-				writeError(w, http.StatusBadRequest, "bad_request", "cols and rows are required")
-				return
-			}
-			if !sessions.SetResizeState(sessionID, req.DeviceID, req.Cols, req.Rows) {
-				writeError(w, http.StatusNotFound, "not_found", "session not found")
-				return
-			}
-			writeJSON(w, map[string]any{"ok": true})
-
 		case "kill":
 			if r.Method != http.MethodPost {
 				writeError(w, http.StatusMethodNotAllowed, "bad_request", "method not allowed")
@@ -496,7 +463,7 @@ func main() {
 
 	// ── WebSocket proxy ──
 
-	mux.HandleFunc("/ws/{sessionID}", wsproxy.Handler(func(sessionID string) (string, error) {
+	wsProxy := wsproxy.New(func(sessionID string) (string, error) {
 		sess, ok := sessions.Get(sessionID)
 		if !ok {
 			return "", fmt.Errorf("session %s not found", sessionID)
@@ -505,7 +472,8 @@ func main() {
 			return "", fmt.Errorf("session %s has no socket", sessionID)
 		}
 		return sess.SocketPath, nil
-	}))
+	}, sessions)
+	mux.HandleFunc("/ws/{sessionID}", wsProxy.Handler())
 
 	// ── SSE Events ──
 

@@ -93,25 +93,22 @@ func TestSubscribe(t *testing.T) {
 	}
 }
 
-func TestSetResizeState(t *testing.T) {
+func TestSetTerminalSize(t *testing.T) {
 	s := New()
 	s.Upsert(Session{ID: "s1", Kind: "shell", Alive: true})
 
-	if !s.SetResizeState("s1", "device-1", 120, 40) {
-		t.Fatal("expected resize state update to succeed")
+	if !s.SetTerminalSize("s1", 120, 40) {
+		t.Fatal("expected terminal size update to succeed")
 	}
 
 	got, ok := s.Get("s1")
 	if !ok {
 		t.Fatal("expected session to exist")
 	}
-	if got.ResizeOwnerID != "device-1" {
-		t.Fatalf("expected resize owner id, got %q", got.ResizeOwnerID)
-	}
 	if got.TerminalCols != 120 || got.TerminalRows != 40 {
 		t.Fatalf("expected terminal size 120x40, got %dx%d", got.TerminalCols, got.TerminalRows)
 	}
-	if s.SetResizeState("missing", "device-1", 120, 40) {
+	if s.SetTerminalSize("missing", 120, 40) {
 		t.Fatal("expected missing session update to fail")
 	}
 }

@@ -65,19 +65,6 @@ export const appRouter = t.router({
         return ctx.gmuxd.launchSession(input)
       }),
 
-    setResizeOwner: t.procedure
-      .input(
-        z.object({
-          sessionId: z.string().min(1),
-          deviceId: z.string().min(1),
-          cols: z.number().int().positive(),
-          rows: z.number().int().positive(),
-        }),
-      )
-      .mutation(async ({ ctx, input }) => {
-        return ctx.gmuxd.setResizeOwner(input.sessionId, input.deviceId, input.cols, input.rows)
-      }),
-
     resume: t.procedure
       .input(
         z.object({

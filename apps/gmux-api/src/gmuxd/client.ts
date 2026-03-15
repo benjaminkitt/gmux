@@ -96,20 +96,6 @@ export function createGmuxdClient(baseUrl: string) {
       return json
     },
 
-    async setResizeOwner(sessionId: string, deviceId: string, cols: number, rows: number) {
-      const response = await fetch(`${normalizedBaseUrl}/v1/sessions/${sessionId}/resize-owner`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_id: deviceId, cols, rows }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`gmuxd resize-owner failed: ${response.status} ${response.statusText}`)
-      }
-
-      return response.json()
-    },
-
     async resumeSession(sessionId: string) {
       const response = await fetch(`${normalizedBaseUrl}/v1/sessions/${sessionId}/resume`, {
         method: 'POST',

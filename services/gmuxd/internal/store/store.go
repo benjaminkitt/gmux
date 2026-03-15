@@ -7,27 +7,26 @@ import (
 
 // Session matches the schema v2 model served by gmux-run's GET /meta.
 type Session struct {
-	ID            string   `json:"id"`
-	CreatedAt     string   `json:"created_at,omitempty"`
-	Command       []string `json:"command,omitempty"`
-	Cwd           string   `json:"cwd,omitempty"`
-	Kind          string   `json:"kind"`
-	Alive         bool     `json:"alive"`
-	Pid           int      `json:"pid,omitempty"`
-	ExitCode      *int     `json:"exit_code,omitempty"`
-	StartedAt     string   `json:"started_at,omitempty"`
-	ExitedAt      string   `json:"exited_at,omitempty"`
-	Title         string   `json:"title,omitempty"`
-	Subtitle      string   `json:"subtitle,omitempty"`
-	Status        *Status  `json:"status"`
-	Unread        bool     `json:"unread"`
-	Resumable     bool     `json:"resumable,omitempty"`
-	ResumeKey     string   `json:"resume_key,omitempty"`
-	CloseAction   string   `json:"close_action,omitempty"`
-	SocketPath    string   `json:"socket_path,omitempty"`
-	ResizeOwnerID string   `json:"resize_owner_id,omitempty"`
-	TerminalCols  uint16   `json:"terminal_cols,omitempty"`
-	TerminalRows  uint16   `json:"terminal_rows,omitempty"`
+	ID           string   `json:"id"`
+	CreatedAt    string   `json:"created_at,omitempty"`
+	Command      []string `json:"command,omitempty"`
+	Cwd          string   `json:"cwd,omitempty"`
+	Kind         string   `json:"kind"`
+	Alive        bool     `json:"alive"`
+	Pid          int      `json:"pid,omitempty"`
+	ExitCode     *int     `json:"exit_code,omitempty"`
+	StartedAt    string   `json:"started_at,omitempty"`
+	ExitedAt     string   `json:"exited_at,omitempty"`
+	Title        string   `json:"title,omitempty"`
+	Subtitle     string   `json:"subtitle,omitempty"`
+	Status       *Status  `json:"status"`
+	Unread       bool     `json:"unread"`
+	Resumable    bool     `json:"resumable,omitempty"`
+	ResumeKey    string   `json:"resume_key,omitempty"`
+	CloseAction  string   `json:"close_action,omitempty"`
+	SocketPath   string   `json:"socket_path,omitempty"`
+	TerminalCols uint16   `json:"terminal_cols,omitempty"`
+	TerminalRows uint16   `json:"terminal_rows,omitempty"`
 }
 
 // Status is the application-reported status.
@@ -37,7 +36,7 @@ type Status struct {
 }
 
 type Event struct {
-	Type string `json:"type"` // session-upsert, session-remove
+	Type string `json:"type"` // "session-upsert" | "session-remove"
 	ID   string `json:"id"`
 
 	// Present for session-upsert
@@ -99,14 +98,15 @@ func (s *Store) Upsert(sess Session) {
 	})
 }
 
-func (s *Store) SetResizeState(id, deviceID string, cols, rows uint16) bool {
+// SetTerminalSize updates the terminal dimensions for a session and broadcasts
+// the change. Called by the WS proxy when the resize owner sends a resize.
+func (s *Store) SetTerminalSize(id string, cols, rows uint16) bool {
 	s.mu.Lock()
 	sess, ok := s.sessions[id]
 	if !ok {
 		s.mu.Unlock()
 		return false
 	}
-	sess.ResizeOwnerID = deviceID
 	sess.TerminalCols = cols
 	sess.TerminalRows = rows
 	s.sessions[id] = sess
