@@ -125,11 +125,14 @@ func (sc *Scanner) Scan() {
 	}
 }
 
-// existingResumeKeys returns all resume_keys already in the store.
+// existingResumeKeys returns resume_keys that should be skipped.
+// Alive sessions and already-resumable sessions are skipped.
+// Dead non-resumable sessions (e.g., a resumed session that exited)
+// are NOT skipped — they need to be refreshed back to resumable.
 func (sc *Scanner) existingResumeKeys() map[string]bool {
 	keys := make(map[string]bool)
 	for _, s := range sc.store.List() {
-		if s.ResumeKey != "" {
+		if s.ResumeKey != "" && (s.Alive || s.Resumable) {
 			keys[s.ResumeKey] = true
 		}
 	}

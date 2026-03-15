@@ -1,13 +1,16 @@
 package discovery
 
-import "sync"
+import (
+	"strings"
+	"sync"
+)
 
-// PendingResumes tracks sessions being resumed. When gmuxr registers a new
-// session, we check if it matches a pending resume (by cwd+kind) and merge
-// it into the existing store entry instead of creating a new one.
+// PendingResumes tracks sessions being resumed. When gmuxr registers,
+// we match by command (which contains the unique session file path)
+// and merge into the existing store entry.
 type PendingResumes struct {
 	mu sync.Mutex
-	// key: "cwd|kind" → store session ID (the file-xxx entry)
+	// key: joined command string → store session ID (the file-xxx entry)
 	pending map[string]string
 }
 
@@ -16,18 +19,18 @@ func NewPendingResumes() *PendingResumes {
 }
 
 // Add records that a resumable session is being resumed.
-func (pr *PendingResumes) Add(cwd, kind, sessionID string) {
+func (pr *PendingResumes) Add(command []string, sessionID string) {
 	pr.mu.Lock()
 	defer pr.mu.Unlock()
-	pr.pending[cwd+"|"+kind] = sessionID
+	pr.pending[strings.Join(command, "\x00")] = sessionID
 }
 
-// Take checks if there's a pending resume for the given cwd+kind.
-// If found, removes it and returns the existing session ID.
-func (pr *PendingResumes) Take(cwd, kind string) (string, bool) {
+// Take checks if a newly registered session matches a pending resume.
+// Matches by exact command array.
+func (pr *PendingResumes) Take(command []string) (string, bool) {
 	pr.mu.Lock()
 	defer pr.mu.Unlock()
-	key := cwd + "|" + kind
+	key := strings.Join(command, "\x00")
 	id, ok := pr.pending[key]
 	if ok {
 		delete(pr.pending, key)

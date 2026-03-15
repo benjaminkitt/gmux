@@ -78,8 +78,8 @@ func TestScanSkipsDuplicates(t *testing.T) {
 	writePiSession(t, tmpHome, "/tmp/project", sessID, "hello")
 
 	s := store.New()
-	// Pre-existing session with same resume_key.
-	s.Upsert(store.Session{ID: "existing", Cwd: "/tmp/project", ResumeKey: sessID})
+	// Pre-existing alive session with same resume_key — should be skipped.
+	s.Upsert(store.Session{ID: "existing", Cwd: "/tmp/project", ResumeKey: sessID, Alive: true})
 
 	sc := New(s)
 	sc.Scan()
@@ -106,6 +106,44 @@ func TestScanUsesFileHeaderCwd(t *testing.T) {
 	}
 	if sessions[0].Cwd != "/home/user/my-project" {
 		t.Errorf("cwd = %q, want %q", sessions[0].Cwd, "/home/user/my-project")
+	}
+}
+
+func TestScanRefreshesDead(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	sessID := "aaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	writePiSession(t, tmpHome, "/tmp/project", sessID, "fix auth")
+
+	s := store.New()
+	// Simulate a session that was resumed then exited: has resume_key,
+	// dead, not resumable. Scanner should refresh it back to resumable.
+	s.Upsert(store.Session{
+		ID:        "file-aaaa-bbb",
+		Cwd:       "/tmp/project",
+		ResumeKey: sessID,
+		Alive:     false,
+		Resumable: false,
+	})
+
+	sc := New(s)
+	sc.Scan()
+
+	sessions := s.List()
+	// Should have 2: the old dead one + the refreshed resumable one
+	// (scanner creates file-aaaa-bbb as new ID from file-<first8>)
+	resumable := 0
+	for _, sess := range sessions {
+		if sess.Resumable {
+			resumable++
+			if sess.Title != "fix auth" {
+				t.Errorf("title = %q, want %q", sess.Title, "fix auth")
+			}
+		}
+	}
+	if resumable != 1 {
+		t.Errorf("expected 1 resumable session, got %d", resumable)
 	}
 }
 

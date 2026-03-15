@@ -318,7 +318,7 @@ func main() {
 			}
 
 			// Record pending resume BEFORE launching so Register() can match.
-			pendingResumes.Add(sess.Cwd, sess.Kind, sessionID)
+			pendingResumes.Add(sess.Command, sessionID)
 
 			pid, err := launchGmuxr(gmuxrBin, sess.Command, sess.Cwd)
 			if err != nil {

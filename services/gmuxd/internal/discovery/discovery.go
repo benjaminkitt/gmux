@@ -132,7 +132,7 @@ func Register(sessions *store.Store, subs *Subscriptions, socketPath string, res
 
 	// Check if this is a resumed session.
 	if resumes != nil {
-		if existingID, ok := resumes.Take(newSess.Cwd, newSess.Kind); ok {
+		if existingID, ok := resumes.Take(newSess.Command); ok {
 			if existing, ok := sessions.Get(existingID); ok {
 				// Merge: keep the existing entry's ID and resume_key,
 				// update with live session data.
