@@ -1,9 +1,8 @@
 //go:build integration
 
-// Shared test infrastructure for adapter integration tests.
-// PTY helpers, event collection, and output parsing utilities.
-
-package adapters
+// Package testutil provides PTY helpers and event collection for adapter
+// integration tests. Gated behind the "integration" build tag.
+package testutil
 
 import (
 	"fmt"
@@ -19,37 +18,37 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// testEvent is a timestamped event for logging.
-type testEvent struct {
+// Event is a timestamped event for logging.
+type Event struct {
 	Time   time.Time
-	Source string // "pty", "fs", "proc", "sidecar"
+	Source string // "pty", "fs", "proc", "adapter"
 	Kind   string
 	Detail string
 	Size   int
 }
 
-func (e testEvent) String() string {
+func (e Event) String() string {
 	if e.Size > 0 {
 		return fmt.Sprintf("[%-7s %-12s] (%d bytes) %s", e.Source, e.Kind, e.Size, e.Detail)
 	}
 	return fmt.Sprintf("[%-7s %-12s] %s", e.Source, e.Kind, e.Detail)
 }
 
-// eventCollector collects timestamped events from multiple goroutines.
-type eventCollector struct {
+// EventCollector collects timestamped events from multiple goroutines.
+type EventCollector struct {
 	mu     sync.Mutex
-	events []testEvent
+	events []Event
 	start  time.Time
 }
 
-func newEventCollector() *eventCollector {
-	return &eventCollector{start: time.Now()}
+func NewEventCollector() *EventCollector {
+	return &EventCollector{start: time.Now()}
 }
 
-func (c *eventCollector) add(source, kind, detail string, size int) {
+func (c *EventCollector) Add(source, kind, detail string, size int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.events = append(c.events, testEvent{
+	c.events = append(c.events, Event{
 		Time:   time.Now(),
 		Source: source,
 		Kind:   kind,
@@ -58,17 +57,17 @@ func (c *eventCollector) add(source, kind, detail string, size int) {
 	})
 }
 
-func (c *eventCollector) snapshot() []testEvent {
+func (c *EventCollector) Snapshot() []Event {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	cp := make([]testEvent, len(c.events))
+	cp := make([]Event, len(c.events))
 	copy(cp, c.events)
 	return cp
 }
 
-func (c *eventCollector) dump(t *testing.T) {
+func (c *EventCollector) Dump(t *testing.T) {
 	t.Helper()
-	events := c.snapshot()
+	events := c.Snapshot()
 	t.Logf("--- %d events ---", len(events))
 	for _, ev := range events {
 		rel := ev.Time.Sub(c.start).Truncate(time.Millisecond)
@@ -76,9 +75,9 @@ func (c *eventCollector) dump(t *testing.T) {
 	}
 }
 
-func (c *eventCollector) eventsOfKind(source, kind string) []testEvent {
-	var result []testEvent
-	for _, ev := range c.snapshot() {
+func (c *EventCollector) EventsOfKind(source, kind string) []Event {
+	var result []Event
+	for _, ev := range c.Snapshot() {
 		if ev.Source == source && ev.Kind == kind {
 			result = append(result, ev)
 		}
@@ -86,29 +85,29 @@ func (c *eventCollector) eventsOfKind(source, kind string) []testEvent {
 	return result
 }
 
-// --- PTY helpers ---
+// --- PTY process ---
 
-type ptyProcess struct {
-	ptmx *os.File
-	pid  int
+type PTYProcess struct {
+	Ptmx *os.File
+	PID  int
 }
 
-func startProcess(t *testing.T, args []string, cwd string) *ptyProcess {
+func StartProcess(t *testing.T, args []string, cwd string) *PTYProcess {
 	t.Helper()
 	binary, err := exec.LookPath(args[0])
 	if err != nil {
 		t.Skipf("%s not found in PATH, skipping", args[0])
 	}
 
-	ptmx, pts, err := openTestPTY()
+	ptmx, pts, err := openPTY()
 	if err != nil {
 		t.Fatalf("openpty: %v", err)
 	}
 
-	if ws, err := getTestWinSize(os.Stdout.Fd()); err == nil {
-		setTestWinSize(ptmx.Fd(), ws)
+	if ws, err := getWinSize(os.Stdout.Fd()); err == nil {
+		setWinSize(ptmx.Fd(), ws)
 	} else {
-		setTestWinSize(ptmx.Fd(), &testWinSize{Rows: 24, Cols: 80})
+		setWinSize(ptmx.Fd(), &winSize{Rows: 24, Cols: 80})
 	}
 
 	env := os.Environ()
@@ -132,21 +131,21 @@ func startProcess(t *testing.T, args []string, cwd string) *ptyProcess {
 		t.Fatalf("start process: %v", err)
 	}
 
-	return &ptyProcess{ptmx: ptmx, pid: pid}
+	return &PTYProcess{Ptmx: ptmx, PID: pid}
 }
 
-func (p *ptyProcess) write(data string) {
-	p.ptmx.Write([]byte(data))
+func (p *PTYProcess) Write(data string) {
+	p.Ptmx.Write([]byte(data))
 }
 
-func (p *ptyProcess) signal(sig syscall.Signal) {
-	syscall.Kill(-p.pid, sig)
+func (p *PTYProcess) Signal(sig syscall.Signal) {
+	syscall.Kill(-p.PID, sig)
 }
 
-// --- output helpers ---
+// --- Output helpers ---
 
-func summarizeOutput(data []byte) string {
-	s := stripTestANSI(string(data))
+func SummarizeOutput(data []byte) string {
+	s := StripANSI(string(data))
 	s = strings.TrimSpace(s)
 	if len(s) > 120 {
 		s = s[:120] + "..."
@@ -156,7 +155,7 @@ func summarizeOutput(data []byte) string {
 	return s
 }
 
-func stripTestANSI(s string) string {
+func StripANSI(s string) string {
 	var out strings.Builder
 	i := 0
 	for i < len(s) {
@@ -196,9 +195,9 @@ func stripTestANSI(s string) string {
 	return out.String()
 }
 
-// --- low-level PTY ---
+// --- Low-level PTY ---
 
-func openTestPTY() (ptmx *os.File, pts *os.File, err error) {
+func openPTY() (ptmx *os.File, pts *os.File, err error) {
 	p, err := unix.Open("/dev/ptmx", unix.O_RDWR|unix.O_NOCTTY|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, nil, err
@@ -228,12 +227,12 @@ func openTestPTY() (ptmx *os.File, pts *os.File, err error) {
 	return ptmx, pts, nil
 }
 
-type testWinSize struct {
+type winSize struct {
 	Rows, Cols, XPixel, YPixel uint16
 }
 
-func getTestWinSize(fd uintptr) (*testWinSize, error) {
-	ws := &testWinSize{}
+func getWinSize(fd uintptr) (*winSize, error) {
+	ws := &winSize{}
 	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, fd, uintptr(syscall.TIOCGWINSZ), uintptr(unsafe.Pointer(ws)))
 	if errno != 0 {
 		return nil, errno
@@ -241,6 +240,6 @@ func getTestWinSize(fd uintptr) (*testWinSize, error) {
 	return ws, nil
 }
 
-func setTestWinSize(fd uintptr, ws *testWinSize) {
+func setWinSize(fd uintptr, ws *winSize) {
 	syscall.Syscall(syscall.SYS_IOCTL, fd, uintptr(syscall.TIOCSWINSZ), uintptr(unsafe.Pointer(ws)))
 }

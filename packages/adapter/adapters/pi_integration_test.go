@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/gmuxapp/gmux/packages/adapter"
+	"github.com/gmuxapp/gmux/packages/adapter/adapters/testutil"
 )
 
 func requirePi(t *testing.T) {
@@ -45,12 +46,12 @@ func lookupPi() (string, error) {
 
 // piTestSession manages a pi process for testing.
 type piTestSession struct {
-	proc      *ptyProcess
+	proc      *testutil.PTYProcess
 	pi        *Pi
-	collector *eventCollector
+	collector *testutil.EventCollector
 	done      chan struct{}
 	cwd       string
-	statuses  []adapter.Status // statuses reported by Monitor()
+	statuses  []adapter.Status
 }
 
 func startPiTestSession(t *testing.T, cwd string, extraArgs ...string) *piTestSession {
@@ -59,9 +60,9 @@ func startPiTestSession(t *testing.T, cwd string, extraArgs ...string) *piTestSe
 	args := []string{"pi", "--no-extensions", "--no-skills", "--no-prompt-templates"}
 	args = append(args, extraArgs...)
 
-	proc := startProcess(t, args, cwd)
+	proc := testutil.StartProcess(t, args, cwd)
 	pi := NewPi()
-	collector := newEventCollector()
+	collector := testutil.NewEventCollector()
 	done := make(chan struct{})
 
 	s := &piTestSession{
@@ -72,7 +73,6 @@ func startPiTestSession(t *testing.T, cwd string, extraArgs ...string) *piTestSe
 		cwd:       cwd,
 	}
 
-	// PTY reader — feeds Monitor() and logs events
 	go func() {
 		buf := make([]byte, 8192)
 		for {
@@ -81,16 +81,16 @@ func startPiTestSession(t *testing.T, cwd string, extraArgs ...string) *piTestSe
 				return
 			default:
 			}
-			n, err := proc.ptmx.Read(buf)
+			n, err := proc.Ptmx.Read(buf)
 			if n > 0 {
-				collector.add("pty", "output", summarizeOutput(buf[:n]), n)
+				collector.Add("pty", "output", testutil.SummarizeOutput(buf[:n]), n)
 				if status := pi.Monitor(buf[:n]); status != nil {
 					s.statuses = append(s.statuses, *status)
-					collector.add("adapter", "status", fmt.Sprintf("%s (%s)", status.Label, status.State), 0)
+					collector.Add("adapter", "status", fmt.Sprintf("%s (%s)", status.Label, status.State), 0)
 				}
 			}
 			if err != nil {
-				collector.add("proc", "exit", err.Error(), 0)
+				collector.Add("proc", "exit", err.Error(), 0)
 				return
 			}
 		}
@@ -98,7 +98,7 @@ func startPiTestSession(t *testing.T, cwd string, extraArgs ...string) *piTestSe
 
 	t.Cleanup(func() {
 		close(done)
-		proc.signal(syscall.SIGTERM)
+		proc.Signal(syscall.SIGTERM)
 		time.Sleep(500 * time.Millisecond)
 	})
 
@@ -113,7 +113,7 @@ func (s *piTestSession) waitForTUI(t *testing.T) {
 		case <-deadline:
 			t.Fatal("timeout waiting for pi TUI")
 		case <-time.After(200 * time.Millisecond):
-			if len(s.collector.eventsOfKind("pty", "output")) > 0 {
+			if len(s.collector.EventsOfKind("pty", "output")) > 0 {
 				time.Sleep(500 * time.Millisecond)
 				return
 			}
@@ -123,27 +123,23 @@ func (s *piTestSession) waitForTUI(t *testing.T) {
 
 func (s *piTestSession) sendMessage(t *testing.T, msg string) {
 	t.Helper()
-	s.collector.add("proc", "input", msg, 0)
-	s.proc.write(msg + "\r")
+	s.collector.Add("proc", "input", msg, 0)
+	s.proc.Write(msg + "\r")
 }
 
-// TestPiSpinnerDetection sends a message to pi and verifies the adapter
-// detects the "Working..." spinner as active status.
 func TestPiSpinnerDetection(t *testing.T) {
 	requirePi(t)
 
 	cwd := t.TempDir()
 	s := startPiTestSession(t, cwd)
 	s.waitForTUI(t)
-
 	s.sendMessage(t, "say hi")
 
-	// Wait for spinner to appear and be detected
 	deadline := time.After(15 * time.Second)
 	for {
 		select {
 		case <-deadline:
-			s.collector.dump(t)
+			s.collector.Dump(t)
 			t.Fatal("timeout waiting for spinner detection")
 		case <-time.After(200 * time.Millisecond):
 			if len(s.statuses) > 0 {
@@ -152,60 +148,39 @@ func TestPiSpinnerDetection(t *testing.T) {
 		}
 	}
 found:
-	t.Logf("detected %d status events", len(s.statuses))
-	for i, st := range s.statuses {
-		t.Logf("  status[%d]: %s (%s)", i, st.Label, st.State)
-	}
-
-	// Should have detected "working" / "active"
 	var foundActive bool
 	for _, st := range s.statuses {
 		if st.State == "active" && st.Label == "working" {
 			foundActive = true
-			break
 		}
 	}
 	if !foundActive {
 		t.Error("expected active/working status from spinner detection")
 	}
-
-	s.collector.dump(t)
+	s.collector.Dump(t)
 }
 
-// TestPiSessionFileLifecycle documents when pi creates and writes its
-// session file relative to PTY output. This information is used by
-// gmuxd's attribution logic (ADR-0009).
-//
-// Key findings (verified by this test):
-// - Pi does NOT create a session file until the first assistant response
-// - Shell escapes (!) alone do NOT trigger file creation
-// - File creation and PTY response occur within ~1ms of each other
-// - Pi uses appendFileSync (synchronous, triggers inotify immediately)
 func TestPiSessionFileLifecycle(t *testing.T) {
 	requirePi(t)
 
 	cwd := t.TempDir()
 	sessionDir := NewPi().SessionDir(cwd)
-	t.Logf("session dir: %s", sessionDir)
 
 	s := startPiTestSession(t, cwd)
 	s.waitForTUI(t)
 
-	// Verify: no session file before first interaction
-	files := ListSessionFiles(sessionDir)
-	if len(files) != 0 {
+	if files := ListSessionFiles(sessionDir); len(files) != 0 {
 		t.Fatalf("expected 0 session files before interaction, got %d", len(files))
 	}
 
-	// Send message to trigger agent turn + file creation
 	s.sendMessage(t, "say hi")
 
-	// Wait for session file to appear
+	var files []string
 	deadline := time.After(30 * time.Second)
 	for {
 		select {
 		case <-deadline:
-			s.collector.dump(t)
+			s.collector.Dump(t)
 			t.Fatal("timeout waiting for session file")
 		case <-time.After(300 * time.Millisecond):
 			files = ListSessionFiles(sessionDir)
@@ -215,20 +190,13 @@ func TestPiSessionFileLifecycle(t *testing.T) {
 		}
 	}
 fileFound:
-	t.Logf("session file created: %s", filepath.Base(files[0]))
-
-	// Wait for response to complete before reading full info
 	time.Sleep(5 * time.Second)
 
-	// Read and verify session info
 	info, err := NewPi().ParseSessionFile(files[0])
 	if err != nil {
-		t.Fatalf("read session info: %v", err)
+		t.Fatalf("parse session file: %v", err)
 	}
-	t.Logf("session UUID:  %s", info.ID)
-	t.Logf("session cwd:   %s", info.Cwd)
-	t.Logf("session title: %s", info.Title)
-	t.Logf("message count: %d", info.MessageCount)
+	t.Logf("UUID: %s  title: %s  msgs: %d", info.ID, info.Title, info.MessageCount)
 
 	if info.Cwd != cwd {
 		t.Errorf("expected cwd %q, got %q", cwd, info.Cwd)
@@ -237,43 +205,30 @@ fileFound:
 		t.Error("expected a title from first user message")
 	}
 	if info.MessageCount < 2 {
-		t.Errorf("expected at least 2 messages (user+assistant), got %d", info.MessageCount)
+		t.Errorf("expected ≥2 messages, got %d", info.MessageCount)
 	}
 
-	// Also verify text extraction for similarity matching
 	text, err := ExtractPiText(files[0])
 	if err != nil {
 		t.Fatalf("extract text: %v", err)
 	}
-	t.Logf("extracted text (%d chars): %.200s", len(text), text)
-
 	if len(text) == 0 {
-		t.Error("expected non-empty extracted text from session file")
+		t.Error("expected non-empty extracted text")
 	}
 
-	s.collector.dump(t)
+	s.collector.Dump(t)
 }
 
-// TestPiAdapterMatch verifies the adapter matches the real pi binary.
 func TestPiAdapterMatch(t *testing.T) {
 	requirePi(t)
-	p := NewPi()
 	path, _ := lookupPi()
-	t.Logf("pi binary: %s", path)
-	if !p.Match([]string{path}) {
-		t.Errorf("adapter should match full path: %s", path)
+	if !NewPi().Match([]string{path}) {
+		t.Errorf("should match full path: %s", path)
 	}
 }
 
-// TestPiReadRealSessionFiles reads real pi session files from disk and
-// verifies ReadPiSessionInfo extracts sensible titles.
 func TestPiReadRealSessionFiles(t *testing.T) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Skip("no home dir")
-	}
-
-	// Find any session directory with files
+	home, _ := os.UserHomeDir()
 	sessRoot := filepath.Join(home, ".pi", "agent", "sessions")
 	dirs, err := os.ReadDir(sessRoot)
 	if err != nil {
@@ -290,7 +245,6 @@ func TestPiReadRealSessionFiles(t *testing.T) {
 		for _, f := range files {
 			info, err := NewPi().ParseSessionFile(f)
 			if err != nil {
-				t.Logf("  ERR %s: %v", filepath.Base(f), err)
 				continue
 			}
 			totalRead++
@@ -299,7 +253,7 @@ func TestPiReadRealSessionFiles(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("Read %d/%d session files successfully", totalRead, totalFiles)
+	t.Logf("Read %d/%d session files", totalRead, totalFiles)
 	if totalFiles > 0 && totalRead == 0 {
 		t.Error("failed to read any session files")
 	}
