@@ -401,11 +401,11 @@ body {
 /* ── Close button on session items ── */
 .session-close-btn {
   position: absolute;
-  right: 8px;
+  right: 12px;
   top: 50%;
   transform: translateY(-50%);
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   border: none;
   border-radius: 4px;
   background: transparent;
@@ -886,15 +886,8 @@ body {
   .mobile-terminal-actions {
     display: flex;
     gap: 6px;
-    overflow-x: auto;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
     min-width: 0;
     flex: 1;
-  }
-
-  .mobile-terminal-actions::-webkit-scrollbar {
-    display: none;
   }
 
   .mobile-bottom-action {
@@ -915,6 +908,11 @@ body {
     justify-content: center;
     touch-action: manipulation;
     transition: background 0.1s, border-color 0.1s, color 0.1s;
+  }
+
+  .mobile-terminal-actions .mobile-bottom-action {
+    flex: 1 1 0;
+    min-width: 0;
   }
 
   .mobile-bottom-action:active {
