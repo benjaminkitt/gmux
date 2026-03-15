@@ -1252,6 +1252,7 @@ function App() {
             session={selected}
             ctrlArmed={ctrlArmed}
             onCtrlConsumed={handleCtrlConsumed}
+            onInputReady={handleTerminalInputReady}
           />
         ) : (
           <EmptyState launchers={launchers} />

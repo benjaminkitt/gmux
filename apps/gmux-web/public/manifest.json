@@ -1,0 +1,9 @@
+{
+  "name": "gmux",
+  "short_name": "gmux",
+  "description": "Terminal session orchestration",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0e13",
+  "theme_color": "#0a0e13"
+}
