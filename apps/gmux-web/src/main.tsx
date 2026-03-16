@@ -13,6 +13,7 @@ import { createSidebarState } from './sidebar-state'
 import type { Session, Folder } from './types'
 import { groupByFolder } from './types'
 import { getMockFolders } from './mock-data'
+import { MOCK_TERMINAL_CONTENT } from './mock-terminal'
 import type { Session as ProtocolSession } from '@gmux/protocol'
 
 // ── Config ──
@@ -861,22 +862,7 @@ function TerminalView({
     && !!session.terminal_cols && !!session.terminal_rows
 
   if (USE_MOCK) {
-    return (
-      <div
-        ref={containerRef}
-        class="terminal-container"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontFamily: "'JetBrains Mono', monospace",
-          fontSize: '13px',
-          color: 'var(--text-muted)',
-        }}
-      >
-        Terminal: {session.id}
-      </div>
-    )
+    return <MockTerminal sessionId={session.id} />
   }
 
   return (
@@ -899,6 +885,47 @@ function TerminalView({
         )}
       </div>
     </>
+  )
+}
+
+/** Read-only xterm instance showing pre-baked ANSI content for mock/demo mode. */
+function MockTerminal({ sessionId }: { sessionId: string }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!containerRef.current) return
+
+    const term = new Terminal({
+      theme: TERM_THEME,
+      fontFamily: "'Fira Code', monospace",
+      fontSize: 13,
+      disableStdin: true,
+      cursorBlink: false,
+      cursorInactiveStyle: 'none',
+    })
+    const fit = new FitAddon()
+    term.loadAddon(fit)
+    term.open(containerRef.current)
+    fit.fit()
+
+    const content = MOCK_TERMINAL_CONTENT[sessionId]
+    if (content) {
+      term.write(content)
+    }
+
+    const onResize = () => fit.fit()
+    window.addEventListener('resize', onResize)
+
+    return () => {
+      window.removeEventListener('resize', onResize)
+      term.dispose()
+    }
+  }, [sessionId])
+
+  return (
+    <div class="terminal-shell">
+      <div ref={containerRef} class="terminal-container" />
+    </div>
   )
 }
 
@@ -1248,7 +1275,7 @@ function App() {
               Retry
             </button>
           </div>
-        ) : selected && canAttach ? (
+        ) : selected && (canAttach || USE_MOCK) ? (
           <TerminalView
             session={selected}
             ctrlArmed={ctrlArmed}
