@@ -841,6 +841,69 @@ body {
   color: var(--text-muted);
 }
 
+.empty-state-section {
+  margin-top: 16px;
+  text-align: center;
+}
+
+.empty-state-heading {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.empty-state-commands {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.empty-state-commands code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.empty-state-urls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.empty-state-url {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+}
+
+.empty-state-url .url-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  min-width: 48px;
+  text-align: right;
+}
+
+.empty-state-url code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.empty-state-url .url-link {
+  text-decoration: none;
+}
+
+.empty-state-url .url-link:hover code {
+  color: var(--accent);
+}
+
 /* ── Mobile ── */
 
 .mobile-bottom-bar {

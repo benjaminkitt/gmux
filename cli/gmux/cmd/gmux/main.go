@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -57,13 +58,16 @@ func main() {
 		}
 		ensureGmuxd(gmuxdAddr)
 
-		// Verify gmuxd is actually reachable before opening browser.
+		// Wait for gmuxd to be reachable before opening browser.
 		client := &http.Client{Timeout: 3 * time.Second}
+		var healthBody []byte
 		ready := false
 		for range 15 {
 			if resp, err := client.Get(gmuxdAddr + "/v1/health"); err == nil {
+				body, _ := io.ReadAll(resp.Body)
 				resp.Body.Close()
 				if resp.StatusCode == 200 {
+					healthBody = body
 					ready = true
 					break
 				}
@@ -73,6 +77,13 @@ func main() {
 		if !ready {
 			log.Fatalf("gmuxd is not running at %s (check %s/gmuxd.log for errors)", gmuxdAddr, os.TempDir())
 		}
+
+		// Print access URLs.
+		fmt.Fprintf(os.Stderr, "  local:  %s\n", gmuxdAddr)
+		if tsURL := parseTailscaleURL(healthBody); tsURL != "" {
+			fmt.Fprintf(os.Stderr, "  remote: %s\n", tsURL)
+		}
+
 		openBrowser(gmuxdAddr)
 		return
 	}
@@ -177,7 +188,7 @@ func main() {
 		gmuxdAddr = "http://localhost:8790"
 	}
 	if started := ensureGmuxd(gmuxdAddr); started && interactive {
-		fmt.Fprintf(os.Stderr, "gmux UI: %s\n", gmuxdAddr)
+		fmt.Fprintf(os.Stderr, "  UI: %s\n", gmuxdAddr)
 	}
 	go registerWithGmuxd(sessionID, sockPath)
 
@@ -306,7 +317,7 @@ func ensureGmuxd(gmuxdAddr string) bool {
 		}
 	}()
 
-	log.Printf("started gmuxd (pid %d), log: %s", cmd.Process.Pid, logPath)
+	fmt.Fprintf(os.Stderr, "gmux: no daemon found, starting gmuxd (pid %d)\n", cmd.Process.Pid)
 	return true
 }
 
@@ -392,6 +403,19 @@ func openBrowser(url string) {
 	default:
 		exec.Command("xdg-open", url).Start()
 	}
+}
+
+// parseTailscaleURL extracts the tailscale_url from a /v1/health JSON response.
+func parseTailscaleURL(body []byte) string {
+	var resp struct {
+		Data struct {
+			TailscaleURL string `json:"tailscale_url"`
+		} `json:"data"`
+	}
+	if json.Unmarshal(body, &resp) == nil {
+		return resp.Data.TailscaleURL
+	}
+	return ""
 }
 
 func deregisterFromGmuxd(sessionID string) {

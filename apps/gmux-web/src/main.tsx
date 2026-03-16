@@ -98,6 +98,25 @@ interface LaunchConfig {
   launchers: LauncherDef[]
 }
 
+interface HealthData {
+  version: string
+  tailscale_url?: string
+}
+
+let _healthCache: HealthData | null = null
+
+async function fetchHealth(): Promise<HealthData | null> {
+  if (_healthCache) return _healthCache
+  try {
+    const resp = await fetch('/v1/health')
+    const json = await resp.json()
+    _healthCache = json.data ?? null
+    return _healthCache
+  } catch {
+    return null
+  }
+}
+
 let _configCache: LaunchConfig | null = null
 
 async function fetchConfig(): Promise<LaunchConfig> {
@@ -943,7 +962,7 @@ function MockTerminal({ sessionId }: { sessionId: string }) {
   )
 }
 
-function EmptyState({ launchers }: { launchers: LauncherDef[] }) {
+function EmptyState({ launchers, health }: { launchers: LauncherDef[]; health: HealthData | null }) {
   const [launching, setLaunching] = useState<string | null>(null)
 
   const handleLaunch = (id: string) => {
@@ -952,10 +971,14 @@ function EmptyState({ launchers }: { launchers: LauncherDef[] }) {
     launchSession(id).finally(() => setLaunching(null))
   }
 
+  const localURL = location.origin
+  const tailscaleURL = health?.tailscale_url
+
   return (
     <div class="empty-state">
       <div class="empty-state-icon">⌘</div>
-      <div class="empty-state-title">No session selected</div>
+      <div class="empty-state-title">gmux</div>
+
       {launchers.length > 0 && (
         <div class="empty-state-launchers">
           {launchers.map(l => (
@@ -971,6 +994,31 @@ function EmptyState({ launchers }: { launchers: LauncherDef[] }) {
           ))}
         </div>
       )}
+
+      <div class="empty-state-section">
+        <div class="empty-state-heading">Launch from terminal</div>
+        <div class="empty-state-commands">
+          <code>gmux python main.py</code>
+          <code>gmux pi</code>
+          <code>gmux make watch</code>
+        </div>
+      </div>
+
+      <div class="empty-state-section">
+        <div class="empty-state-heading">Access</div>
+        <div class="empty-state-urls">
+          <div class="empty-state-url">
+            <span class="url-label">local</span>
+            <code>{localURL}</code>
+          </div>
+          {tailscaleURL && (
+            <div class="empty-state-url">
+              <span class="url-label">remote</span>
+              <a href={tailscaleURL} class="url-link"><code>{tailscaleURL}</code></a>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -1085,12 +1133,12 @@ function App() {
   const [connState, setConnState] = useState<ConnectionState>('connecting')
   const [ctrlArmed, setCtrlArmed] = useState(false)
   const [launchers, setLaunchers] = useState<LauncherDef[]>([])
+  const [health, setHealth] = useState<HealthData | null>(null)
   const [sidebarVersion, forceUpdate] = useState(0) // re-render on sidebar state change
   const terminalInputRef = useRef<((data: string) => void) | null>(null)
 
-
-
   useEffect(() => { fetchConfig().then(cfg => setLaunchers(cfg.launchers)) }, [])
+  useEffect(() => { fetchHealth().then(setHealth) }, [])
 
   // Subscribe to sidebar state changes for re-render
   useEffect(() => sidebarState.subscribe(() => forceUpdate(n => n + 1)), [])
@@ -1305,7 +1353,7 @@ function App() {
             onInputReady={handleTerminalInputReady}
           />
         ) : (
-          <EmptyState launchers={launchers} />
+          <EmptyState launchers={launchers} health={health} />
         )}
 
         <MobileTerminalBar

@@ -185,18 +185,25 @@ func main() {
 
 	mux := http.NewServeMux()
 
+	// tsListener is set below if tailscale is enabled. Declared here so
+	// the health handler can include the tailscale URL.
+	var tsListener *tsauth.Listener
+
 	// ── Health + Capabilities ──
 
 	mux.HandleFunc("/v1/health", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, map[string]any{
-			"ok": true,
-			"data": map[string]any{
-				"service": "gmuxd",
-				"version": version,
-				"node_id": "node-local",
-				"status":  "ready",
-			},
-		})
+		data := map[string]any{
+			"service": "gmuxd",
+			"version": version,
+			"node_id": "node-local",
+			"status":  "ready",
+		}
+		if tsListener != nil {
+			if fqdn := tsListener.FQDN(); fqdn != "" {
+				data["tailscale_url"] = "https://" + fqdn
+			}
+		}
+		writeJSON(w, map[string]any{"ok": true, "data": data})
 	})
 
 	mux.HandleFunc("/v1/capabilities", func(w http.ResponseWriter, r *http.Request) {
@@ -577,7 +584,7 @@ func main() {
 	// ── Optional tailscale listener ──
 
 	if cfg.Tailscale.Enabled {
-		tsListener := tsauth.Start(tsauth.Config{
+		tsListener = tsauth.Start(tsauth.Config{
 			Hostname: cfg.Tailscale.Hostname,
 			Allow:    cfg.Tailscale.Allow,
 		}, stateDir(), mux)

@@ -33,10 +33,15 @@ type Config struct {
 
 // Listener manages a tsnet server and its HTTPS listener.
 type Listener struct {
-	srv *tsnet.Server
-	lc  *tailscale.LocalClient
-	cfg Config
+	srv  *tsnet.Server
+	lc   *tailscale.LocalClient
+	cfg  Config
+	fqdn string // resolved tailnet FQDN, set once ready
 }
+
+// FQDN returns the full tailnet DNS name (e.g. "gmuxd.angler-map.ts.net")
+// once the listener is ready. Returns "" if tailscale hasn't connected yet.
+func (l *Listener) FQDN() string { return l.fqdn }
 
 // Start joins the tailnet and begins serving handler over HTTPS on :443.
 // The tailscale login and listener startup happen in the background so
@@ -88,13 +93,14 @@ func (l *Listener) run(handler http.Handler) {
 		return
 	}
 
-	// Log the full tailnet FQDN so users know exactly what to type.
+	// Resolve the full tailnet FQDN so users know exactly what to type.
 	fqdn := l.cfg.Hostname
 	if status, err := lc.Status(context.Background()); err == nil && status.Self != nil {
 		if dnsName := strings.TrimSuffix(status.Self.DNSName, "."); dnsName != "" {
 			fqdn = dnsName
 		}
 	}
+	l.fqdn = fqdn
 	log.Printf("tsauth: listening on https://%s (allowed: %v)", fqdn, l.cfg.Allow)
 
 	authed := l.authMiddleware(handler)
