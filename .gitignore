@@ -15,6 +15,7 @@ coverage
 # go
 bin/*
 !bin/.keep
+out/
 *.test
 services/gmuxd/gmuxd
 cli/gmux/gmux

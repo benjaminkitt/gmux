@@ -32,6 +32,7 @@ fi
 
 VERSION="${VERSION:-dev}"
 LDFLAGS_COMMON="-s -w -X main.version=$VERSION"
+export CGO_ENABLED=0
 
 echo "→ Building gmuxd…"
 (cd "$ROOT/services/gmuxd" && go build -ldflags "$LDFLAGS_COMMON" -o "$BIN/gmuxd" ./cmd/gmuxd)
