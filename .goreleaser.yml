@@ -12,7 +12,6 @@ builds:
     binary: gmuxd
     env:
       - CGO_ENABLED=0
-      - GOWORK={{ .Env.GOWORK }}
     goos:
       - linux
       - darwin
@@ -20,7 +19,7 @@ builds:
       - amd64
       - arm64
     ldflags:
-      - -s -w
+      - -s -w -X main.version={{ .Version }}
 
   - id: gmux
     main: ./cmd/gmux
@@ -28,7 +27,6 @@ builds:
     binary: gmux
     env:
       - CGO_ENABLED=0
-      - GOWORK={{ .Env.GOWORK }}
     goos:
       - linux
       - darwin
@@ -62,18 +60,19 @@ changelog:
       - "^test:"
       - "^chore:"
 
-homebrew_casks:
+brews:
   - name: gmux
     repository:
       owner: gmuxapp
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
     homepage: "https://github.com/gmuxapp/gmux"
     description: "Terminal session orchestration — manage AI agents, test runners, and long-running processes from your browser"
     license: "MIT"
-    binaries:
-      - gmuxd
-      - gmux
+    install: |
+      bin.install "gmux"
+      bin.install "gmuxd"
     caveats: |
       Open the UI:
         gmux

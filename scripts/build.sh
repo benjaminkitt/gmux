@@ -31,13 +31,13 @@ fi
 # ── Go binaries ──
 
 VERSION="${VERSION:-dev}"
-LDFLAGS="-s -w -X main.version=$VERSION"
+LDFLAGS_COMMON="-s -w -X main.version=$VERSION"
 
 echo "→ Building gmuxd…"
-(cd "$ROOT/services/gmuxd" && go build -ldflags "$LDFLAGS" -o "$BIN/gmuxd" ./cmd/gmuxd)
+(cd "$ROOT/services/gmuxd" && go build -ldflags "$LDFLAGS_COMMON" -o "$BIN/gmuxd" ./cmd/gmuxd)
 
 echo "→ Building gmux…"
-(cd "$ROOT/cli/gmux" && go build -ldflags "$LDFLAGS" -o "$BIN/gmux" ./cmd/gmux)
+(cd "$ROOT/cli/gmux" && go build -ldflags "$LDFLAGS_COMMON" -o "$BIN/gmux" ./cmd/gmux)
 
 echo ""
 ls -lh "$BIN/gmuxd" "$BIN/gmux"

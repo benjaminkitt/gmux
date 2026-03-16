@@ -112,11 +112,14 @@ func New(cfg Config) (*Server, error) {
 		return nil, fmt.Errorf("start pty: %w", err)
 	}
 
-	// Ensure socket dir exists and remove stale socket
-	os.MkdirAll(filepath.Dir(cfg.SocketPath), 0o755)
+	// Ensure socket dir exists (owner-only) and remove stale socket.
+	os.MkdirAll(filepath.Dir(cfg.SocketPath), 0o700)
 	os.Remove(cfg.SocketPath)
 
+	// Set umask so the socket file itself is owner-only (0700).
+	oldUmask := syscall.Umask(0o077)
 	listener, err := net.Listen("unix", cfg.SocketPath)
+	syscall.Umask(oldUmask)
 	if err != nil {
 		ptmx.Close()
 		cmd.Process.Kill()

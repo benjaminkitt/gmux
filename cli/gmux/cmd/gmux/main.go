@@ -56,6 +56,23 @@ func main() {
 			gmuxdAddr = "http://localhost:8790"
 		}
 		ensureGmuxd(gmuxdAddr)
+
+		// Verify gmuxd is actually reachable before opening browser.
+		client := &http.Client{Timeout: 3 * time.Second}
+		ready := false
+		for range 15 {
+			if resp, err := client.Get(gmuxdAddr + "/v1/health"); err == nil {
+				resp.Body.Close()
+				if resp.StatusCode == 200 {
+					ready = true
+					break
+				}
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		if !ready {
+			log.Fatalf("gmuxd is not running at %s (check %s/gmuxd.log for errors)", gmuxdAddr, os.TempDir())
+		}
 		openBrowser(gmuxdAddr)
 		return
 	}
@@ -254,27 +271,50 @@ func ensureGmuxd(gmuxdAddr string) bool {
 		}
 	}
 
-	// Not running — find sibling gmuxd binary (same dir as gmux).
-	self, err := os.Executable()
-	if err != nil {
+	// Not running — find gmuxd binary: sibling first, then PATH.
+	var gmuxdBin string
+	if self, err := os.Executable(); err == nil {
+		sibling := filepath.Join(filepath.Dir(self), "gmuxd")
+		if _, err := os.Stat(sibling); err == nil {
+			gmuxdBin = sibling
+		}
+	}
+	if gmuxdBin == "" {
+		if p, err := exec.LookPath("gmuxd"); err == nil {
+			gmuxdBin = p
+		}
+	}
+	if gmuxdBin == "" {
+		log.Printf("warning: gmuxd not found (install it alongside gmux or add it to PATH)")
 		return false
 	}
-	gmuxdBin := filepath.Join(filepath.Dir(self), "gmuxd")
-	if _, err := os.Stat(gmuxdBin); err != nil {
-		return false
+
+	// Log gmuxd output to a file so users can diagnose startup failures.
+	logPath := filepath.Join(os.TempDir(), "gmuxd.log")
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		logFile = nil
 	}
 
 	cmd := exec.Command(gmuxdBin)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	cmd.Stdout = nil
-	cmd.Stderr = nil
+	cmd.Stderr = logFile
 	if err := cmd.Start(); err != nil {
 		log.Printf("warning: could not start gmuxd: %v", err)
+		if logFile != nil {
+			logFile.Close()
+		}
 		return false
 	}
-	go cmd.Wait()
+	go func() {
+		cmd.Wait()
+		if logFile != nil {
+			logFile.Close()
+		}
+	}()
 
-	log.Printf("started gmuxd (pid %d)", cmd.Process.Pid)
+	log.Printf("started gmuxd (pid %d), log: %s", cmd.Process.Pid, logPath)
 	return true
 }
 
@@ -318,8 +358,11 @@ func openBrowser(url string) {
 	client := &http.Client{Timeout: 500 * time.Millisecond}
 	for range 10 {
 		if resp, err := client.Get(url + "/v1/health"); err == nil {
+			ok := resp.StatusCode == 200
 			resp.Body.Close()
-			break
+			if ok {
+				break
+			}
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
@@ -328,10 +371,11 @@ func openBrowser(url string) {
 	var browsers []string
 	switch runtime.GOOS {
 	case "darwin":
-		// macOS: use open -a to find Chrome.
+		// macOS: use open -a to find Chrome. Run() waits for open to exit
+		// so we can detect if the app wasn't found (exit code 1).
 		for _, app := range []string{"Google Chrome", "Chromium"} {
 			cmd := exec.Command("open", "-a", app, "--args", "--app="+url)
-			if err := cmd.Start(); err == nil {
+			if err := cmd.Run(); err == nil {
 				return
 			}
 		}

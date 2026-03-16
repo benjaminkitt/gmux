@@ -26,6 +26,9 @@ import (
 	"github.com/gmuxapp/gmux/services/gmuxd/internal/wsproxy"
 )
 
+// version is set at build time via -ldflags "-X main.version=..."
+var version = "dev"
+
 type LaunchConfig struct {
 	DefaultLauncher string             `json:"default_launcher"`
 	Launchers       []adapter.Launcher `json:"launchers"`
@@ -187,6 +190,7 @@ func main() {
 			"ok": true,
 			"data": map[string]any{
 				"service": "gmuxd",
+				"version": version,
 				"node_id": "node-local",
 				"status":  "ready",
 			},
@@ -572,7 +576,7 @@ func main() {
 
 	// ── Localhost listener (always, no auth) ──
 
-	log.Printf("gmuxd listening on %s", addr)
+	log.Printf("gmuxd %s listening on %s", version, addr)
 	log.Fatal(srv.ListenAndServe())
 }
 
