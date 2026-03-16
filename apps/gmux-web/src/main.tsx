@@ -1005,18 +1005,27 @@ function EmptyState({ launchers, health }: { launchers: LauncherDef[]; health: H
           <div class="empty-state-list">
             <div class="empty-state-hint">
               <code>gmux <span class="cmd-placeholder">&lt;command&gt;</span></code>
-              <span class="empty-state-list-desc">wrap any command</span>
+              <span class="empty-state-hint-desc">wrap any command</span>
             </div>
             <div class="empty-state-hint">
               <code>gmux</code>
-              <span class="empty-state-list-desc">open this page</span>
+              <span class="empty-state-hint-desc">open this page</span>
             </div>
           </div>
-          {tailscaleURL && (
-            <div class="empty-state-footer">
-              <a href={tailscaleURL} class="empty-state-remote-link">{maskTailnet(tailscaleURL)}</a>
+
+          <div class="empty-state-heading" style={{ marginTop: 'auto' }}>Access</div>
+          <div class="empty-state-list">
+            <div class="empty-state-url">
+              <span class="empty-state-url-label">local</span>
+              <code>{location.origin}</code>
             </div>
-          )}
+            {tailscaleURL && (
+              <div class="empty-state-url">
+                <span class="empty-state-url-label">remote</span>
+                <code>{maskTailnet(tailscaleURL)}</code>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
