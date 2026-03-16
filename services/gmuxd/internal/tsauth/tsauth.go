@@ -39,55 +39,61 @@ type Listener struct {
 }
 
 // Start joins the tailnet and begins serving handler over HTTPS on :443.
-// It blocks in a goroutine — call Shutdown to stop.
-func Start(cfg Config, stateDir string, handler http.Handler) (*Listener, error) {
+// The tailscale login and listener startup happen in the background so
+// the caller (main) can proceed to start the localhost listener immediately.
+// Call Shutdown to stop.
+func Start(cfg Config, stateDir string, handler http.Handler) *Listener {
 	srv := &tsnet.Server{
 		Hostname: cfg.Hostname,
 		Dir:      filepath.Join(stateDir, "tsnet"),
 	}
 
-	// Start the tsnet node and wait for it to be ready.
-	if err := srv.Start(); err != nil {
-		return nil, fmt.Errorf("tsauth: tsnet start: %w", err)
-	}
-
-	lc, err := srv.LocalClient()
-	if err != nil {
-		srv.Close()
-		return nil, fmt.Errorf("tsauth: local client: %w", err)
-	}
-
-	// Auto-whitelist the node owner's tailscale account.
-	ownerLogin, err := resolveOwnerLogin(lc)
-	if err != nil {
-		srv.Close()
-		return nil, fmt.Errorf("tsauth: could not determine node owner: %w", err)
-	}
-	cfg.Allow = addIfMissing(cfg.Allow, ownerLogin)
-	log.Printf("tsauth: node owner %s auto-whitelisted", ownerLogin)
-
 	l := &Listener{
 		srv: srv,
-		lc:  lc,
 		cfg: cfg,
 	}
 
-	// HTTPS listener with automatic certs from tailscale.
-	ln, err := srv.ListenTLS("tcp", ":443")
-	if err != nil {
-		srv.Close()
-		return nil, fmt.Errorf("tsauth: listen TLS: %w", err)
+	go l.run(handler)
+	return l
+}
+
+// run does the blocking tailscale startup in a background goroutine.
+func (l *Listener) run(handler http.Handler) {
+	if err := l.srv.Start(); err != nil {
+		log.Printf("tsauth: tsnet start: %v", err)
+		return
 	}
 
-	go func() {
-		authed := l.authMiddleware(handler)
-		if err := http.Serve(ln, authed); err != nil {
-			log.Printf("tsauth: serve: %v", err)
-		}
-	}()
+	lc, err := l.srv.LocalClient()
+	if err != nil {
+		log.Printf("tsauth: local client: %v", err)
+		return
+	}
+	l.lc = lc
 
-	log.Printf("tsauth: listening on https://%s (allowed: %v)", cfg.Hostname, cfg.Allow)
-	return l, nil
+	// Wait for the node to be authenticated. On first run, the user must
+	// visit the auth URL printed in the logs.
+	ownerLogin, err := resolveOwnerLogin(lc)
+	if err != nil {
+		log.Printf("tsauth: could not determine node owner: %v", err)
+		return
+	}
+	l.cfg.Allow = addIfMissing(l.cfg.Allow, ownerLogin)
+	log.Printf("tsauth: node owner %s auto-whitelisted", ownerLogin)
+
+	// HTTPS listener with automatic certs from tailscale.
+	ln, err := l.srv.ListenTLS("tcp", ":443")
+	if err != nil {
+		log.Printf("tsauth: listen TLS: %v", err)
+		return
+	}
+
+	log.Printf("tsauth: listening on https://%s (allowed: %v)", l.cfg.Hostname, l.cfg.Allow)
+
+	authed := l.authMiddleware(handler)
+	if err := http.Serve(ln, authed); err != nil {
+		log.Printf("tsauth: serve: %v", err)
+	}
 }
 
 // Shutdown stops the tsnet server.
@@ -136,30 +142,62 @@ func (l *Listener) isAllowed(loginName string) bool {
 	return false
 }
 
-// resolveOwnerLogin fetches the tailscale status and returns the login name
-// of the user who owns this node.
+// resolveOwnerLogin waits for the tsnet node to be authenticated, then
+// returns the login name of the node owner. On first run, the user must
+// complete the tailscale login flow — check the logs for the auth URL.
 func resolveOwnerLogin(lc *tailscale.LocalClient) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	status, err := lc.Status(ctx)
-	if err != nil {
-		return "", fmt.Errorf("status: %w", err)
-	}
-	if status.Self == nil {
-		return "", fmt.Errorf("no self node in status")
-	}
+	prompted := false
+	tick := time.NewTicker(2 * time.Second)
+	defer tick.Stop()
 
-	// status.Self.UserID maps to a profile in status.User.
-	profile, ok := status.User[status.Self.UserID]
-	if !ok {
-		return "", fmt.Errorf("no user profile for UserID %d", status.Self.UserID)
-	}
-	if profile.LoginName == "" {
-		return "", fmt.Errorf("empty login name for UserID %d", status.Self.UserID)
-	}
+	for {
+		status, err := lc.Status(ctx)
+		if err != nil {
+			return "", fmt.Errorf("status: %w", err)
+		}
 
-	return profile.LoginName, nil
+		// If NeedsLogin, tell the user once and keep waiting.
+		if status.BackendState == "NeedsLogin" || status.BackendState == "NoState" {
+			if !prompted {
+				if status.AuthURL != "" {
+					log.Printf("tsauth: tailscale needs login — visit: %s", status.AuthURL)
+				} else {
+					log.Printf("tsauth: waiting for tailscale login...")
+				}
+				prompted = true
+			}
+			select {
+			case <-ctx.Done():
+				return "", fmt.Errorf("timed out waiting for tailscale login (state: %s)", status.BackendState)
+			case <-tick.C:
+				continue
+			}
+		}
+
+		if status.Self == nil {
+			select {
+			case <-ctx.Done():
+				return "", fmt.Errorf("no self node in status (state: %s)", status.BackendState)
+			case <-tick.C:
+				continue
+			}
+		}
+
+		profile, ok := status.User[status.Self.UserID]
+		if !ok || profile.LoginName == "" {
+			select {
+			case <-ctx.Done():
+				return "", fmt.Errorf("no user profile for UserID %d (state: %s)", status.Self.UserID, status.BackendState)
+			case <-tick.C:
+				continue
+			}
+		}
+
+		return profile.LoginName, nil
+	}
 }
 
 // addIfMissing appends entry to the list if not already present (case-insensitive).

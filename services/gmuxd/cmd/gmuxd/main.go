@@ -563,15 +563,11 @@ func main() {
 	// ── Optional tailscale listener ──
 
 	if cfg.Tailscale.Enabled {
-		tsListener, err := tsauth.Start(tsauth.Config{
+		tsListener := tsauth.Start(tsauth.Config{
 			Hostname: cfg.Tailscale.Hostname,
 			Allow:    cfg.Tailscale.Allow,
 		}, stateDir(), mux)
-		if err != nil {
-			log.Printf("tailscale: %v (continuing without tailscale)", err)
-		} else {
-			defer tsListener.Shutdown()
-		}
+		defer tsListener.Shutdown()
 	}
 
 	// ── Localhost listener (always, no auth) ──
