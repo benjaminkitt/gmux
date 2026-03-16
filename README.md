@@ -197,15 +197,17 @@ graph TB
 | `services/gmuxd` | Go | Machine daemon — discovery, cache, WS proxy, embedded web UI |
 | `apps/gmux-web` | TypeScript/Preact | Browser UI — sidebar, terminal, header bar |
 | `packages/protocol` | TypeScript | Shared schemas, zod-validated |
-| `docs/` | Markdown | ADRs, protocol specs, plans |
+| `apps/website` | Astro/Starlight | Documentation site |
 
 ## Docs
 
-- [ADR-0004: Integrated PTY + WebSocket transport](docs/adr/0004-integrated-pty-transport.md)
-- [ADR-0005: Runner-authoritative state and adapters](docs/adr/0005-runner-authoritative-state.md)
-- [ADR-0006: Information hierarchy and folder probes](docs/adr/0006-information-hierarchy-and-folder-probes.md)
-- [Session schema v2](docs/protocol/session-schema-v2.md)
-- [gmuxd REST API v1](docs/protocol/gmuxd-rest-v1.md)
+Documentation lives in the [website](apps/website/src/content/docs/):
+
+- [Architecture](apps/website/src/content/docs/architecture.md) — runtime structure (gmuxr, gmuxd, web UI)
+- [Session Schema](apps/website/src/content/docs/develop/session-schema.md) — metadata model
+- [Adapter Architecture](apps/website/src/content/docs/develop/adapter-architecture.md) — how adapters work
+- [Security](apps/website/src/content/docs/security.md) — threat model and safeguards
+- [Remote Access](apps/website/src/content/docs/remote-access.md) — tailscale setup
 
 ## License
 

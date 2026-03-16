@@ -51,4 +51,4 @@ pnpm moon run :lint    # all lint/typecheck
 
 ## Project structure
 
-See [README.md](README.md) for workspace layout and [docs/](docs/) for ADRs and protocol specs.
+See [README.md](README.md) for workspace layout and the [website docs](apps/website/src/content/docs/) for architecture, protocol specs, and guides.

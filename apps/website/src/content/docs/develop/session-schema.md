@@ -1,6 +1,9 @@
-# Session Schema v2 — Application-Agnostic Session Metadata
+---
+title: Session Schema
+description: The session metadata model shared between gmuxr, gmuxd, and the web UI.
+---
 
-> Replaces session-metadata-v1.json. Informed by research into Codex, Claude Code Desktop, T3 Code, and cmux sidebar APIs.
+> Application-agnostic session metadata. Informed by research into Codex, Claude Code Desktop, T3 Code, and cmux sidebar APIs.
 
 ## Design Principles
 
@@ -50,7 +53,7 @@
 | `binary_hash` | string | no | SHA-256 hex digest of the gmuxr binary that owns this session. Computed once at startup from `os.Executable()`. |
 | `stale` | boolean | no | Set by gmuxd when `binary_hash` doesn't match the gmuxr binary gmuxd would launch for new sessions. Indicates the session was started by a different build. Default: false. |
 
-**Stale detection** allows the UI to show a visual indicator on sessions running an outdated gmuxr. This is important during development (frequent rebuilds) and after upgrades (old sessions survive daemon restart). The comparison is exact: any difference in binary content is a mismatch.
+Stale detection allows the UI to show a visual indicator on sessions running an outdated gmuxr. This is important during development (frequent rebuilds) and after upgrades (old sessions survive daemon restart). The comparison is exact: any difference in binary content is a mismatch.
 
 ### Status Object (set by child process)
 
@@ -63,9 +66,9 @@ interface Status {
   icon?: string       // Optional icon hint (emoji or icon name)
 }
 
-type StatusState = 
+type StatusState =
   | "active"    // Working, processing (pulsing/animated indicator)
-  | "attention" // Needs user input, approval needed (alert indicator) 
+  | "attention" // Needs user input, approval needed (alert indicator)
   | "success"   // Completed successfully (green check)
   | "error"     // Something went wrong (red indicator)
   | "paused"    // Idle but resumable (dim/grey indicator)
@@ -87,7 +90,7 @@ The `label` is the human-readable text. The `state` determines the visual treatm
 
 ### How Children Set Status
 
-Option A — **Environment variable + HTTP** (preferred):
+**Option A — Environment variable + HTTP** (preferred):
 ```bash
 # gmuxr sets this in the child's environment
 GMUX_SOCKET=/tmp/gmux-sessions/sess-abc123.sock
@@ -97,31 +100,13 @@ curl --unix-socket $GMUX_SOCKET http://localhost/status \
   -X PUT -d '{"label":"thinking","state":"active"}'
 ```
 
-Option B — **OSC escape sequences** (terminal-native, like cmux):
+**Option B — OSC escape sequences** (terminal-native):
 ```bash
 # OSC 7777 ; json ST  (custom, parsed by gmuxr's PTY reader)
 printf '\e]7777;{"label":"waiting","state":"attention"}\e\\'
 ```
 
-Option C — **Both.** HTTP for programmatic use (hooks, extensions), OSC for terminal-native tools.
-
-### What the Sidebar Renders
-
-```
-┌─────────────────────────────────┐
-│ ● gmux bootstrap                │  ← title, dot color from status.state
-│   ~/dev/gmux · thinking         │  ← subtitle · status.label
-├─────────────────────────────────┤
-│ ● fix auth bug                  │
-│   ~/dev/myapp · waiting         │  ← attention state = orange dot
-├─────────────────────────────────┤
-│ ○ docs cleanup                  │  ← no status = process alive, dim dot
-│   ~/dev/docs                    │
-├─────────────────────────────────┤
-│ ✕ failed migration              │  ← exited + error state = red
-│   ~/dev/db · exit 1             │
-└─────────────────────────────────┘
-```
+**Option C — Both.** HTTP for programmatic use (hooks, extensions), OSC for terminal-native tools.
 
 ### Dot/Indicator Logic
 
@@ -136,7 +121,9 @@ Option C — **Both.** HTTP for programmatic use (hooks, extensions), OSC for te
 | yes | (none) | Dim green dot (alive, no status reported) |
 | no | (any/none) | Grey hollow dot or ✕ |
 
-### Full Example (as served by `GET /meta` on runner socket)
+### Full Example
+
+As served by `GET /meta` on a runner's Unix socket:
 
 ```json
 {
@@ -161,17 +148,6 @@ Option C — **Both.** HTTP for programmatic use (hooks, extensions), OSC for te
   "binary_hash": "a1b2c3d4e5f6..."
 }
 ```
-
-## Comparison with Prior Art
-
-| Feature | cmux | Codex | Claude Desktop | **gmux** |
-|---------|------|-------|---------------|----------|
-| Process lifecycle | implicit (terminal) | cloud-managed | local/remote/cloud | **explicit: alive/exited** |
-| App status | keyed status pills | task states | hook events | **single Status object** |
-| Attention signal | notification rings | — | desktop notification | **`attention` state** |
-| Progress | progress bar (0-1) | — | — | **deferred (future Status extension)** |
-| Sidebar text | status label | task title | session name | **title + subtitle + status.label** |
-| Set by | socket API / CLI | internal | internal | **child process via HTTP or OSC** |
 
 ## What's NOT in This Schema
 
