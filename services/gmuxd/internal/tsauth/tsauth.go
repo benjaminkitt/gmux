@@ -88,7 +88,14 @@ func (l *Listener) run(handler http.Handler) {
 		return
 	}
 
-	log.Printf("tsauth: listening on https://%s (allowed: %v)", l.cfg.Hostname, l.cfg.Allow)
+	// Log the full tailnet FQDN so users know exactly what to type.
+	fqdn := l.cfg.Hostname
+	if status, err := lc.Status(context.Background()); err == nil && status.Self != nil {
+		if dnsName := strings.TrimSuffix(status.Self.DNSName, "."); dnsName != "" {
+			fqdn = dnsName
+		}
+	}
+	log.Printf("tsauth: listening on https://%s (allowed: %v)", fqdn, l.cfg.Allow)
 
 	authed := l.authMiddleware(handler)
 	if err := http.Serve(ln, authed); err != nil {
