@@ -73,7 +73,7 @@ Look for the log line:
 
 ```
 tsauth: node owner you@github auto-whitelisted
-tsauth: listening on https://gmux.your-tailnet.ts.net (allowed: [you@github])
+tsauth: connected
 ```
 
 ### 5. Connect
