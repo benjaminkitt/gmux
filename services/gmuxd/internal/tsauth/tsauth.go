@@ -101,7 +101,7 @@ func (l *Listener) run(handler http.Handler) {
 		}
 	}
 	l.fqdn = fqdn
-	log.Printf("tsauth: listening on https://%s (allowed: %v)", fqdn, l.cfg.Allow)
+	log.Printf("tsauth: connected")
 
 	authed := l.authMiddleware(handler)
 	if err := http.Serve(ln, authed); err != nil {
