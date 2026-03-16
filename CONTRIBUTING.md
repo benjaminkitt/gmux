@@ -33,6 +33,8 @@ This starts:
 
 Ctrl+C stops everything.
 
+**No manual cleanup needed.** gmuxd uses a PID file (`~/.local/state/gmux/gmuxd.pid`) to detect and shut down any existing instance before binding. Restarts via watchexec or re-running `./dev` are seamless.
+
 To run services individually:
 
 ```bash

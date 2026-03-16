@@ -43,6 +43,15 @@
 | `status` | Status | no | Application-reported status (see below) |
 | `unread` | boolean | no | Whether this session has unseen activity. Default: false. Set true on output when not focused; cleared on focus. |
 
+### Build Identity (set by gmuxr, used by gmuxd)
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `binary_hash` | string | no | SHA-256 hex digest of the gmuxr binary that owns this session. Computed once at startup from `os.Executable()`. |
+| `stale` | boolean | no | Set by gmuxd when `binary_hash` doesn't match the gmuxr binary gmuxd would launch for new sessions. Indicates the session was started by a different build. Default: false. |
+
+**Stale detection** allows the UI to show a visual indicator on sessions running an outdated gmuxr. This is important during development (frequent rebuilds) and after upgrades (old sessions survive daemon restart). The comparison is exact: any difference in binary content is a mismatch.
+
 ### Status Object (set by child process)
 
 The child process can report its own status via a well-known mechanism (env variable pointing to gmuxr's socket, or escape sequences). This is advisory — gmux renders it but doesn't interpret it.
@@ -148,7 +157,8 @@ Option C — **Both.** HTTP for programmatic use (hooks, extensions), OSC for te
     "state": "active",
     "icon": "🤔"
   },
-  "unread": false
+  "unread": false,
+  "binary_hash": "a1b2c3d4e5f6..."
 }
 ```
 

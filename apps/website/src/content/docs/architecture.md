@@ -27,9 +27,11 @@ One per machine. It:
 - Serves the embedded web frontend as a SPA
 - Manages session launch, kill, dismiss, and resume
 
-`gmuxd` is stateless — if it restarts, it rediscovers running sessions.
+`gmuxd` is stateless — if it restarts, it rediscovers running sessions. On startup it hashes the `gmuxr` binary it ships with; sessions running a different build are marked **stale** so the UI can flag them.
 
 `gmuxr` auto-starts `gmuxd` if it isn't already running.
+
+Configuration lives in `~/.config/gmux/config.toml`. See [Security](/security) and [Remote Access](/remote-access) for details.
 
 ### Web UI
 
