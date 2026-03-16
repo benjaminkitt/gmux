@@ -1,12 +1,12 @@
 ---
-// gmux landing page — dark, minimal, confident
+// gmux landing page
 ---
 
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>gmux — monitor every agent, test runner, and process</title>
+  <title>gmux — live terminals for every agent, test runner, and process</title>
   <meta name="description" content="Keep tabs on every AI agent, test runner, and long-running process across your machines. Work from your desktop, steer from your phone." />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -19,8 +19,8 @@
     <div class="nav-inner">
       <a href="/" class="nav-logo">gmux</a>
       <div class="nav-links">
-        <a href="/introduction">Docs</a>
-        <a href="https://github.com/gmuxapp/gmux" class="nav-github">
+        <a href="/quick-start/">Docs</a>
+        <a href="https://github.com/gmuxapp/gmux" class="nav-github" aria-label="GitHub">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
         </a>
       </div>
@@ -31,19 +31,157 @@
   <section class="hero">
     <div class="hero-content">
       <div class="hero-text">
-        <h1>Monitor every agent, test runner, and process</h1>
+        <h1>Live terminals for every process you run</h1>
         <p class="hero-sub">
-          Live terminals in the browser. Grouped by project.
-          Status that tells you what needs attention.
-          No tmux, no Electron — two binaries and a browser tab.
+          gmux gives you a browser-based dashboard for all your AI agents,
+          test runners, and long-running processes. Grouped by project.
+          Accessible from any device.
         </p>
+        <div class="hero-install">
+          <div class="install-cmd" id="install-cmd">
+            <code>brew install gmuxapp/tap/gmux</code>
+            <button class="copy-btn" id="copy-btn" aria-label="Copy to clipboard">
+              <svg class="copy-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+              <svg class="check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:none"><polyline points="20 6 9 17 4 12"/></svg>
+            </button>
+          </div>
+        </div>
         <div class="hero-actions">
-          <a href="/quick-start" class="hero-cta">Get started</a>
-          <a href="https://github.com/gmuxapp/gmux" class="hero-secondary">View on GitHub →</a>
+          <a href="/quick-start/" class="hero-cta">Read the docs</a>
+          <a href="https://github.com/gmuxapp/gmux" class="hero-secondary">Source on GitHub</a>
         </div>
       </div>
       <div class="hero-image">
-        <img src="/hero.png" alt="gmux desktop and mobile interface showing test runners, AI agents, and terminal sessions grouped by project" width="1321" height="906" />
+        <img
+          src="/hero.png"
+          alt="gmux desktop and mobile interface showing test runners, AI agents, and terminal sessions grouped by project"
+          width="1973"
+          height="1459"
+          loading="eager"
+        />
+      </div>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section class="section" id="how">
+    <div class="section-inner">
+      <h2>How it works</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <h3>Wrap any command with gmuxr</h3>
+            <p>
+              <code>gmuxr</code> wraps a command in a session and registers it with the gmux daemon.
+              Your process runs in a pty, exactly like a normal terminal.
+            </p>
+            <div class="code-block">
+              <code>gmuxr pytest tests/ -v</code>
+            </div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <h3>Open the dashboard</h3>
+            <p>
+              All sessions appear in the browser at <code>localhost:8790</code>.
+              Desktop, phone, tablet. No install needed on the viewing device.
+            </p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <h3>Keep using your terminal</h3>
+            <p>
+              gmux does not replace your terminal. You keep using iTerm2, Kitty, Alacritty, WezTerm,
+              tmux, or whatever you prefer. The session is just also available in the browser now.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Zero friction -->
+  <section class="section section-alt" id="friction">
+    <div class="section-inner">
+      <h2>Zero friction</h2>
+      <p class="section-lead">
+        gmux adds visibility without changing your workflow.
+      </p>
+      <div class="features">
+        <div class="feature">
+          <h3>Alias and forget</h3>
+          <p>
+            Want every Pi session in gmux? Add an alias.
+            Same for pytest, cargo test, or anything else.
+          </p>
+          <div class="code-block">
+            <code>alias pi="gmuxr pi"</code>
+          </div>
+        </div>
+        <div class="feature">
+          <h3>Bring your own tools</h3>
+          <p>
+            Your terminal emulator, your shell, your extensions. gmux works alongside them.
+            It wraps the process, not the environment.
+          </p>
+        </div>
+        <div class="feature">
+          <h3>Two binaries, no runtime</h3>
+          <p>
+            gmux is a single <code>brew install</code>. No Node.js, no Docker, no config files.
+            The daemon starts automatically when you run your first session.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Status -->
+  <section class="section" id="status">
+    <div class="section-inner">
+      <h2>What works today</h2>
+      <div class="status-grid">
+        <div class="status-item works">
+          <span class="status-dot"></span>
+          <div>
+            <h3>Working</h3>
+            <ul>
+              <li>Live terminal streaming to any browser</li>
+              <li>Session grouping by project folder</li>
+              <li>Status self-reporting from adapters</li>
+              <li>Mobile-friendly interface with touch controls</li>
+              <li>Pi (coding agent) adapter with full status</li>
+              <li>Generic adapter for any command</li>
+            </ul>
+          </div>
+        </div>
+        <div class="status-item untested">
+          <span class="status-dot"></span>
+          <div>
+            <h3>Should work, not yet tested</h3>
+            <ul>
+              <li>Claude Code, Cursor, Codex, and other agent CLIs</li>
+              <li>Any process that writes to stdout</li>
+              <li>Multiple machines reporting to one dashboard</li>
+            </ul>
+          </div>
+        </div>
+        <div class="status-item planned">
+          <span class="status-dot"></span>
+          <div>
+            <h3>Planned</h3>
+            <ul>
+              <li>Push notifications when a session needs attention</li>
+              <li>Session persistence across daemon restarts</li>
+              <li>Custom adapter SDK for deeper integrations</li>
+            </ul>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -53,41 +191,51 @@
     <div class="footer-inner">
       <span class="footer-logo">gmux</span>
       <div class="footer-links">
-        <a href="/introduction">Docs</a>
+        <a href="/quick-start/">Docs</a>
         <a href="https://github.com/gmuxapp/gmux">GitHub</a>
-        <span class="footer-sep">·</span>
+        <span class="footer-sep">&middot;</span>
         <span class="footer-license">MIT License</span>
       </div>
     </div>
   </footer>
+
+  <script>
+    document.getElementById('copy-btn')?.addEventListener('click', () => {
+      navigator.clipboard.writeText('brew install gmuxapp/tap/gmux')
+      const copyIcon = document.querySelector('.copy-icon')
+      const checkIcon = document.querySelector('.check-icon')
+      if (copyIcon && checkIcon) {
+        copyIcon.style.display = 'none'
+        checkIcon.style.display = 'block'
+        setTimeout(() => {
+          copyIcon.style.display = 'block'
+          checkIcon.style.display = 'none'
+        }, 2000)
+      }
+    })
+  </script>
 </body>
 </html>
 
 <style>
-  /* ============================================
-     gmux landing page
-     Dark, minimal, confident
-     ============================================ */
-
-  *, *::before, *::after {
+  :where(*, *::before, *::after) {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
   }
 
   :root {
-    --bg: oklch(13% 0.015 250);
-    --bg-raised: oklch(16% 0.015 250);
-    --bg-surface: oklch(19% 0.015 250);
+    --bg: oklch(12% 0.015 250);
+    --bg-alt: oklch(15% 0.015 250);
     --text: oklch(88% 0.01 250);
     --text-secondary: oklch(65% 0.01 250);
     --text-muted: oklch(48% 0.01 250);
     --accent: oklch(72% 0.1 195);
-    --border: oklch(22% 0.015 250);
-    --border-subtle: oklch(19% 0.01 250);
     --green: oklch(72% 0.14 145);
-    --amber: oklch(76% 0.14 85);
-    --radius: 8px;
+    --amber: oklch(68% 0.12 70);
+    --border: oklch(22% 0.015 250);
+    --border-subtle: oklch(18% 0.01 250);
+    --code-bg: oklch(16% 0.015 250);
   }
 
   html {
@@ -101,29 +249,20 @@
     color: var(--text);
     background: var(--bg);
     line-height: 1.6;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
   }
 
   h1, h2, h3 {
     font-family: 'Instrument Sans', sans-serif;
-    line-height: 1.15;
-    letter-spacing: -0.025em;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
   }
 
-  a {
-    color: var(--accent);
-    text-decoration: none;
-  }
-
-  a:hover {
-    text-decoration: underline;
-  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
 
   code {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.9em;
+    font-size: 0.88em;
   }
 
   /* --- Nav --- */
@@ -131,16 +270,16 @@
     position: sticky;
     top: 0;
     z-index: 100;
-    background: oklch(13% 0.015 250 / 0.8);
+    background: oklch(12% 0.015 250 / 0.85);
     backdrop-filter: blur(16px);
     border-bottom: 1px solid var(--border-subtle);
   }
 
   .nav-inner {
-    max-width: 1200px;
+    max-width: 1100px;
     margin: 0 auto;
-    padding: 0 clamp(1.5rem, 4vw, 3rem);
-    height: 56px;
+    padding: 0 clamp(1.25rem, 4vw, 2.5rem);
+    height: 52px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -149,7 +288,7 @@
   .nav-logo {
     font-family: 'Instrument Sans', sans-serif;
     font-weight: 700;
-    font-size: 22px;
+    font-size: 20px;
     color: var(--text);
     letter-spacing: -0.04em;
   }
@@ -158,19 +297,16 @@
   .nav-links {
     display: flex;
     align-items: center;
-    gap: 1.5rem;
+    gap: 1.25rem;
   }
 
   .nav-links a {
     color: var(--text-secondary);
-    font-size: 0.92rem;
+    font-size: 0.9rem;
     font-weight: 500;
     transition: color 0.15s;
   }
-  .nav-links a:hover {
-    color: var(--text);
-    text-decoration: none;
-  }
+  .nav-links a:hover { color: var(--text); text-decoration: none; }
 
   .nav-github {
     display: flex;
@@ -181,85 +317,260 @@
 
   /* --- Hero --- */
   .hero {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    padding: clamp(3rem, 6vw, 5rem) 0 clamp(2rem, 4vw, 3rem);
+    padding: clamp(3rem, 8vw, 6rem) 0 0;
   }
 
   .hero-content {
-    max-width: 1200px;
+    max-width: 1100px;
     margin: 0 auto;
-    padding: 0 clamp(1.5rem, 4vw, 3rem);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    width: 100%;
+    padding: 0 clamp(1.25rem, 4vw, 2.5rem);
   }
 
   .hero-text {
-    max-width: 640px;
-    margin-bottom: clamp(2.5rem, 4vw, 4rem);
+    max-width: 600px;
+    margin-bottom: clamp(2.5rem, 5vw, 4rem);
   }
 
   .hero h1 {
-    font-size: clamp(2rem, 4vw, 3rem);
+    font-size: clamp(2rem, 4.5vw, 3rem);
     font-weight: 700;
     color: var(--text);
     margin-bottom: 1rem;
+    letter-spacing: -0.03em;
   }
 
   .hero-sub {
-    font-size: clamp(1rem, 1.3vw, 1.15rem);
+    font-size: clamp(1rem, 1.2vw, 1.1rem);
     color: var(--text-secondary);
-    max-width: 48ch;
-    margin: 0 auto 2rem;
     line-height: 1.7;
+    margin-bottom: 1.75rem;
+    max-width: 50ch;
   }
 
+  /* Install command */
+  .hero-install {
+    margin-bottom: 1.5rem;
+  }
+
+  .install-cmd {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem 0.65rem 0.5rem 0.85rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.88rem;
+    color: var(--text);
+  }
+
+  .install-cmd code {
+    font-size: inherit;
+  }
+
+  .copy-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    transition: color 0.15s;
+  }
+  .copy-btn:hover { color: var(--text); }
+
+  /* Actions */
   .hero-actions {
     display: flex;
     align-items: center;
-    justify-content: center;
     gap: 1.5rem;
   }
 
   .hero-cta {
     font-family: 'Instrument Sans', sans-serif;
     font-weight: 600;
-    font-size: 0.95rem;
+    font-size: 0.9rem;
     color: var(--bg);
     background: var(--text);
-    padding: 0.6rem 1.5rem;
+    padding: 0.5rem 1.25rem;
     border-radius: 6px;
     transition: opacity 0.15s;
   }
-  .hero-cta:hover {
-    text-decoration: none;
-    opacity: 0.85;
-  }
+  .hero-cta:hover { text-decoration: none; opacity: 0.85; }
 
   .hero-secondary {
-    font-size: 0.92rem;
+    font-size: 0.9rem;
     font-weight: 500;
     color: var(--text-secondary);
   }
-  .hero-secondary:hover {
-    color: var(--text);
-    text-decoration: none;
-  }
+  .hero-secondary:hover { color: var(--text); text-decoration: none; }
 
-  /* --- Hero Image --- */
+  /* Hero image */
   .hero-image {
-    width: 100%;
-    max-width: 1100px;
+    margin-left: -2rem;
+    margin-right: -2rem;
   }
 
   .hero-image img {
     width: 100%;
     height: auto;
     display: block;
+  }
+
+  /* --- Sections --- */
+  .section {
+    padding: clamp(3rem, 6vw, 5rem) 0;
+  }
+
+  .section-alt {
+    background: var(--bg-alt);
+  }
+
+  .section-inner {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 clamp(1.25rem, 4vw, 2.5rem);
+  }
+
+  .section h2 {
+    font-size: clamp(1.5rem, 2.5vw, 2rem);
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+  }
+
+  .section-lead {
+    color: var(--text-secondary);
+    font-size: 1.05rem;
+    margin-bottom: 2rem;
+    max-width: 50ch;
+  }
+
+  /* Steps */
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 2.5rem;
+    margin-top: 2.5rem;
+  }
+
+  .step {
+    display: flex;
+    gap: 1.25rem;
+    align-items: flex-start;
+  }
+
+  .step-num {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Instrument Sans', sans-serif;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-top: 2px;
+  }
+
+  .step-body h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+  }
+
+  .step-body p {
+    color: var(--text-secondary);
+    max-width: 52ch;
+    line-height: 1.65;
+  }
+
+  .code-block {
+    margin-top: 0.75rem;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem 0.85rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    color: var(--accent);
+    display: inline-block;
+  }
+
+  /* Features grid */
+  .features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 2rem;
+  }
+
+  .feature h3 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+  }
+
+  .feature p {
+    color: var(--text-secondary);
+    line-height: 1.65;
+    font-size: 0.95rem;
+  }
+
+  .feature .code-block {
+    margin-top: 0.75rem;
+  }
+
+  /* Status grid */
+  .status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 2rem;
+    margin-top: 2rem;
+  }
+
+  .status-item {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+  }
+
+  .status-dot {
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-top: 8px;
+  }
+
+  .status-item.works .status-dot { background: var(--green); }
+  .status-item.untested .status-dot { background: var(--amber); }
+  .status-item.planned .status-dot { background: var(--text-muted); }
+
+  .status-item h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+  }
+
+  .status-item ul {
+    list-style: none;
+    padding: 0;
+  }
+
+  .status-item li {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.6;
+    padding: 0.15rem 0;
+  }
+
+  .status-item li::before {
+    content: none;
   }
 
   /* --- Footer --- */
@@ -269,9 +580,9 @@
   }
 
   .footer-inner {
-    max-width: 1200px;
+    max-width: 1100px;
     margin: 0 auto;
-    padding: 0 clamp(1.5rem, 4vw, 3rem);
+    padding: 0 clamp(1.25rem, 4vw, 2.5rem);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -288,7 +599,7 @@
   .footer-links {
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 0.85rem;
     font-size: 0.85rem;
   }
   .footer-links a { color: var(--text-secondary); }
@@ -296,18 +607,23 @@
   .footer-license { color: var(--text-muted); }
 
   /* --- Responsive --- */
-  @media (max-width: 600px) {
-    .hero h1 { font-size: 1.65rem; }
-    .hero-actions { flex-direction: column; gap: 0.75rem; }
+  @media (max-width: 640px) {
+    .hero h1 { font-size: 1.75rem; }
+    .hero-actions { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
+    .hero-image { margin-left: -1rem; margin-right: -1rem; }
+    .step { flex-direction: column; gap: 0.75rem; }
+    .step-num { width: 28px; height: 28px; font-size: 0.8rem; }
+    .status-grid { grid-template-columns: 1fr; }
   }
 
-  /* --- Entry animation --- */
+  /* --- Animations --- */
   @media (prefers-reduced-motion: no-preference) {
     .hero-text { animation: fadeUp 0.5s ease-out both; }
-    .hero-image { animation: fadeUp 0.6s 0.15s ease-out both; }
+    .hero-image { animation: fadeUp 0.6s 0.12s ease-out both; }
+    .section { animation: fadeUp 0.5s ease-out both; }
 
     @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(12px); }
+      from { opacity: 0; transform: translateY(10px); }
       to { opacity: 1; transform: translateY(0); }
     }
   }

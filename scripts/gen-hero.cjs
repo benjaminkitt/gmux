@@ -6,11 +6,8 @@
  * into a single image with the phone overlapping the desktop corner.
  *
  * Usage:
- *   # With mock server already running on :5199
- *   node scripts/gen-hero.cjs
- *
- *   # Auto-start vite dev server
- *   node scripts/gen-hero.cjs --serve
+ *   node scripts/gen-hero.cjs           # mock server must be running on :5199
+ *   node scripts/gen-hero.cjs --serve   # auto-start vite dev server
  *
  * Output:
  *   apps/website/src/assets/hero-desktop.png
@@ -27,15 +24,6 @@ const ROOT = path.resolve(__dirname, '..')
 const PORT = 5199
 const URL = `http://localhost:${PORT}/?mock`
 
-// ── Layout constants (tweak these) ──
-const DESKTOP_DRAW_W = 1100
-const MOBILE_DRAW_W = 220
-const MOBILE_BEZEL = 6
-const PAD = 50
-const DESKTOP_RADIUS = 12
-const MOBILE_RADIUS = 14
-const MOBILE_BEZEL_RADIUS = 20
-
 async function waitForServer(url, timeoutMs = 15000) {
   const start = Date.now()
   while (Date.now() - start < timeoutMs) {
@@ -46,10 +34,10 @@ async function waitForServer(url, timeoutMs = 15000) {
 }
 
 async function takeScreenshots(browser) {
-  // Desktop @2x
+  // Desktop — tighter viewport to fill more of the frame
   console.log('Taking desktop screenshot...')
   const dPage = await browser.newPage({
-    viewport: { width: 1280, height: 800 },
+    viewport: { width: 1100, height: 700 },
     deviceScaleFactor: 2,
   })
   await dPage.goto(URL, { timeout: 5000, waitUntil: 'load' })
@@ -62,10 +50,10 @@ async function takeScreenshots(browser) {
   await dPage.screenshot({ path: desktopPath })
   console.log(`  → ${path.relative(ROOT, desktopPath)}`)
 
-  // Mobile @2x with sidebar open
+  // Mobile with sidebar open
   console.log('Taking mobile screenshot...')
   const mPage = await browser.newPage({
-    viewport: { width: 390, height: 844 },
+    viewport: { width: 390, height: 760 },
     deviceScaleFactor: 2,
     isMobile: true,
     hasTouch: true,
@@ -74,7 +62,7 @@ async function takeScreenshots(browser) {
   await mPage.waitForSelector('.mobile-bottom-bar', { timeout: 5000 })
   await mPage.waitForTimeout(500)
 
-  // Open sidebar via hamburger button
+  // Open sidebar
   const menuBtn = await mPage.$('.mobile-bottom-bar button:first-child')
   if (menuBtn) {
     await menuBtn.click()
@@ -109,83 +97,92 @@ async function composite(browser, desktopPath, mobilePath) {
         mobile.src = 'data:image/png;base64,${mobileB64}'
         await mobile.decode()
 
-        const dW = ${DESKTOP_DRAW_W}
-        const dH = (desktop.height / desktop.width) * dW
-        const mW = ${MOBILE_DRAW_W}
-        const mH = (mobile.height / mobile.width) * mW
-        const pad = ${PAD}
-        const bezel = ${MOBILE_BEZEL}
+        // Both images are @2x (2200x1400 desktop, 780x1520 mobile)
+        // Scale down to ~75% to keep canvas manageable while sharp
+        const scale = 0.75
+        const dW = desktop.width * scale
+        const dH = desktop.height * scale
+        const mOrigW = mobile.width
+        const mOrigH = mobile.height
 
-        const canvasW = dW + mW * 0.55 + pad * 2
-        const canvasH = dH + mH * 0.25 + pad * 2
+        // Phone at ~30% of desktop width
+        const phoneScale = 0.30
+        const mDrawW = dW * phoneScale
+        const mDrawH = (mOrigH / mOrigW) * mDrawW
+
+        const pad = 50
+        const canvasW = dW + mDrawW * 0.45 + pad * 2
+        const canvasH = dH + mDrawH * 0.32 + pad * 2
 
         const c = document.getElementById('c')
-        c.width = canvasW * 2
-        c.height = canvasH * 2
-        c.style.width = canvasW + 'px'
-        c.style.height = canvasH + 'px'
+        c.width = canvasW
+        c.height = canvasH
+        c.style.width = (canvasW / 2) + 'px'
+        c.style.height = (canvasH / 2) + 'px'
 
         const ctx = c.getContext('2d')
-        ctx.scale(2, 2)
+        // No ctx.scale — we draw at native pixel resolution
 
-        const dx = pad, dy = pad
+        const dx = pad
+        const dy = pad
 
         // Desktop shadow
         ctx.save()
         ctx.shadowColor = 'rgba(0,0,0,0.3)'
-        ctx.shadowBlur = 50
-        ctx.shadowOffsetY = 15
-        roundRect(ctx, dx, dy, dW, dH, ${DESKTOP_RADIUS})
+        ctx.shadowBlur = 80
+        ctx.shadowOffsetY = 24
+        roundRect(ctx, dx, dy, dW, dH, 20)
         ctx.fillStyle = '#0f141a'
         ctx.fill()
         ctx.restore()
 
         // Desktop image
         ctx.save()
-        roundRect(ctx, dx, dy, dW, dH, ${DESKTOP_RADIUS})
+        roundRect(ctx, dx, dy, dW, dH, 20)
         ctx.clip()
-        ctx.drawImage(desktop, dx, dy, dW, dH)
+        ctx.drawImage(desktop, 0, 0, desktop.width, desktop.height, dx, dy, dW, dH)
         ctx.restore()
 
         // Desktop border
         ctx.save()
-        roundRect(ctx, dx, dy, dW, dH, ${DESKTOP_RADIUS})
-        ctx.strokeStyle = 'rgba(255,255,255,0.06)'
-        ctx.lineWidth = 1
+        roundRect(ctx, dx, dy, dW, dH, 20)
+        ctx.strokeStyle = 'rgba(255,255,255,0.07)'
+        ctx.lineWidth = 1.5
         ctx.stroke()
         ctx.restore()
 
-        // Mobile position
-        const mx = dx + dW - mW * 0.3
-        const my = dy + dH - mH * 0.55
+        // Phone position — overlapping bottom-right, fully visible
+        const bezel = 10
+        const mx = dx + dW - mDrawW * 0.15
+        const my = dy + dH - mDrawH * 0.75
 
-        // Phone shadow + bezel
+        // Phone shadow
         ctx.save()
-        ctx.shadowColor = 'rgba(0,0,0,0.5)'
-        ctx.shadowBlur = 35
-        ctx.shadowOffsetX = -5
-        ctx.shadowOffsetY = 10
-        roundRect(ctx, mx - bezel, my - bezel, mW + bezel * 2, mH + bezel * 2, ${MOBILE_BEZEL_RADIUS})
+        ctx.shadowColor = 'rgba(0,0,0,0.45)'
+        ctx.shadowBlur = 60
+        ctx.shadowOffsetX = -8
+        ctx.shadowOffsetY = 16
+        roundRect(ctx, mx - bezel, my - bezel, mDrawW + bezel * 2, mDrawH + bezel * 2, 36)
         ctx.fillStyle = '#111'
         ctx.fill()
         ctx.restore()
 
-        // Bezel border
+        // Bezel highlight
         ctx.save()
-        roundRect(ctx, mx - bezel, my - bezel, mW + bezel * 2, mH + bezel * 2, ${MOBILE_BEZEL_RADIUS})
-        ctx.strokeStyle = 'rgba(255,255,255,0.08)'
-        ctx.lineWidth = 1
+        roundRect(ctx, mx - bezel, my - bezel, mDrawW + bezel * 2, mDrawH + bezel * 2, 36)
+        ctx.strokeStyle = 'rgba(255,255,255,0.1)'
+        ctx.lineWidth = 1.5
         ctx.stroke()
         ctx.restore()
 
         // Phone screen
         ctx.save()
-        roundRect(ctx, mx, my, mW, mH, ${MOBILE_RADIUS})
+        roundRect(ctx, mx, my, mDrawW, mDrawH, 26)
         ctx.clip()
-        ctx.drawImage(mobile, mx, my, mW, mH)
+        ctx.drawImage(mobile, 0, 0, mobile.width, mobile.height, mx, my, mDrawW, mDrawH)
         ctx.restore()
 
-        document.title = 'done'
+        document.title = 'done|' + canvasW + '|' + canvasH
       }
 
       function roundRect(ctx, x, y, w, h, r) {
@@ -205,7 +202,11 @@ async function composite(browser, desktopPath, mobilePath) {
       draw()
     </script></body></html>`)
 
-  await page.waitForFunction(() => document.title === 'done', { timeout: 10000 })
+  await page.waitForFunction(() => document.title.startsWith('done'), { timeout: 10000 })
+
+  // Read canvas dimensions from title
+  const title = await page.title()
+  const [, cw, ch] = title.split('|').map(Number)
 
   const canvas = await page.$('#c')
   const box = await canvas.boundingBox()
@@ -216,6 +217,11 @@ async function composite(browser, desktopPath, mobilePath) {
     omitBackground: true,
   })
   console.log(`  → ${path.relative(ROOT, outPath)}`)
+
+  // Report sizes
+  const stat = fs.statSync(outPath)
+  console.log(`  ${(stat.size / 1024).toFixed(0)}KB, canvas ${cw}x${ch}px`)
+
   return outPath
 }
 
