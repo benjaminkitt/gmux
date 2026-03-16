@@ -48,6 +48,7 @@ const MOCK_SESSIONS: Session[] = [
     subtitle: 'waiting for approval',
     status: { label: 'waiting for input', working: false },
     unread: true,
+    stale: true,
     socket_path: '/tmp/gmux-sessions/sess-d4e5f6.sock',
   },
   {

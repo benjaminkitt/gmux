@@ -39,6 +39,10 @@ type State struct {
 	// Transport
 	SocketPath string `json:"socket_path"`
 
+	// Build identity — sha256 of the gmuxr binary, computed once at startup.
+	// Used by gmuxd to detect stale runners from a different build.
+	BinaryHash string `json:"binary_hash,omitempty"`
+
 	// Subscribers for /events SSE
 	subs []chan Event
 }
@@ -57,6 +61,7 @@ type Config struct {
 	Kind       string
 	SocketPath string
 	Title      string
+	BinaryHash string
 }
 
 // New creates a new session state.
@@ -70,6 +75,7 @@ func New(cfg Config) *State {
 		Kind:       cfg.Kind,
 		SocketPath: cfg.SocketPath,
 		Title:      cfg.Title,
+		BinaryHash: cfg.BinaryHash,
 		Alive:      false,
 	}
 }

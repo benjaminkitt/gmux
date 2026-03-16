@@ -16,8 +16,10 @@ import (
 
 	"github.com/gmuxapp/gmux/packages/adapter"
 	"github.com/gmuxapp/gmux/packages/adapter/adapters"
+	"github.com/gmuxapp/gmux/services/gmuxd/internal/binhash"
 	"github.com/gmuxapp/gmux/services/gmuxd/internal/config"
 	"github.com/gmuxapp/gmux/services/gmuxd/internal/discovery"
+	"github.com/gmuxapp/gmux/services/gmuxd/internal/pidfile"
 	"github.com/gmuxapp/gmux/services/gmuxd/internal/sessionfiles"
 	"github.com/gmuxapp/gmux/services/gmuxd/internal/store"
 	"github.com/gmuxapp/gmux/services/gmuxd/internal/tsauth"
@@ -140,9 +142,21 @@ func launchGmuxr(gmuxrBin string, command []string, cwd string) (int, error) {
 }
 
 func main() {
+	// Acquire PID file — signals any existing gmuxd to shut down.
+	cleanupPID, err := pidfile.Acquire(stateDir())
+	if err != nil {
+		log.Fatalf("pidfile: %v", err)
+	}
+	defer cleanupPID()
+
 	gmuxrBin := resolveGmuxr() // resolve once, use everywhere
 	if gmuxrBin != "" {
 		log.Printf("gmuxr: %s", gmuxrBin)
+		h := binhash.File(gmuxrBin)
+		if h != "" {
+			discovery.ExpectedRunnerHash = h
+			log.Printf("gmuxr hash: %s…", h[:12])
+		}
 	}
 	launchConfig := discoverLaunchers()
 
@@ -537,11 +551,10 @@ func main() {
 	// ── Optional tailscale listener ──
 
 	if cfg.Tailscale.Enabled {
-		stateDir := tailscaleStateDir()
 		tsListener, err := tsauth.Start(tsauth.Config{
 			Hostname: cfg.Tailscale.Hostname,
 			Allow:    cfg.Tailscale.Allow,
-		}, stateDir, mux)
+		}, stateDir(), mux)
 		if err != nil {
 			log.Printf("tailscale: %v (continuing without tailscale)", err)
 		} else {
@@ -556,8 +569,8 @@ func main() {
 	log.Fatal(http.ListenAndServe(addr, mux))
 }
 
-// tailscaleStateDir returns the directory for tsnet state.
-func tailscaleStateDir() string {
+// stateDir returns the gmux state directory (~/.local/state/gmux).
+func stateDir() string {
 	if dir := os.Getenv("XDG_STATE_HOME"); dir != "" {
 		return filepath.Join(dir, "gmux")
 	}

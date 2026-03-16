@@ -24,6 +24,8 @@ export interface Session {
   socket_path: string
   terminal_cols?: number
   terminal_rows?: number
+  binary_hash?: string
+  stale?: boolean
 }
 
 export interface Folder {

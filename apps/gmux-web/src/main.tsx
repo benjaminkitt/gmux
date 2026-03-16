@@ -987,7 +987,14 @@ function MainHeader({ session, onKill }: { session: Session | null; onKill?: (id
   return (
     <div class="main-header">
       <div class="main-header-left">
-        <div class="main-header-title">{session.title}</div>
+        <div class="main-header-title">
+          {session.title}
+          {session.stale && (
+            <span class="stale-badge" title="This session is running a different build of gmuxr. Restart the session to update.">
+              outdated
+            </span>
+          )}
+        </div>
         <div class="main-header-meta">
           <span class="main-header-cwd">{shortCwd}</span>
           {session.kind !== 'shell' && (

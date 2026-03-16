@@ -28,6 +28,8 @@ export const SessionSchema = z.object({
   socket_path: z.string().optional(),
   terminal_cols: z.number().int().positive().optional(),
   terminal_rows: z.number().int().positive().optional(),
+  binary_hash: z.string().optional(),
+  stale: z.boolean().optional().default(false),
 })
 
 export const AttachResponseSchema = z.object({

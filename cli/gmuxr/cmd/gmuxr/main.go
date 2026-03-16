@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gmuxapp/gmux/cli/gmuxr/internal/binhash"
 	"github.com/gmuxapp/gmux/cli/gmuxr/internal/localterm"
 	"github.com/gmuxapp/gmux/cli/gmuxr/internal/naming"
 	"github.com/gmuxapp/gmux/cli/gmuxr/internal/ptyserver"
@@ -97,6 +98,7 @@ func main() {
 		Kind:       a.Name(),
 		SocketPath: sockPath,
 		Title:      sessionTitle,
+		BinaryHash: binhash.Self(),
 	})
 
 	// Common env vars — set for every child, per ADR-0005
@@ -147,8 +149,14 @@ func main() {
 		fmt.Println("serving...")
 	}
 
-	// Auto-start gmuxd if not running, then register
-	ensureGmuxd()
+	// Auto-start gmuxd if not running (one-shot, never retried), then register.
+	gmuxdAddr := os.Getenv("GMUXD_ADDR")
+	if gmuxdAddr == "" {
+		gmuxdAddr = "http://localhost:8790"
+	}
+	if started := ensureGmuxd(gmuxdAddr); started && interactive {
+		fmt.Fprintf(os.Stderr, "gmux UI: %s\n", gmuxdAddr)
+	}
 	go registerWithGmuxd(sessionID, sockPath)
 
 	if interactive {
@@ -219,45 +227,42 @@ func main() {
 	os.Exit(exitCode)
 }
 
-// ensureGmuxd checks if gmuxd is reachable and starts it in the background if not.
-func ensureGmuxd() {
-	gmuxdAddr := os.Getenv("GMUXD_ADDR")
-	if gmuxdAddr == "" {
-		gmuxdAddr = "http://localhost:8790"
-	}
-
-	// Quick health check
+// ensureGmuxd checks if gmuxd is reachable and starts it if not.
+// Called once at startup — if gmuxd dies later, we don't restart it.
+// Returns true if gmuxd was started by this call.
+func ensureGmuxd(gmuxdAddr string) bool {
+	// Quick health check — if it's already running, nothing to do.
 	client := &http.Client{Timeout: 500 * time.Millisecond}
 	resp, err := client.Get(gmuxdAddr + "/v1/health")
 	if err == nil {
 		resp.Body.Close()
 		if resp.StatusCode == 200 {
-			return // already running
+			return false
 		}
 	}
 
-	// Not running — find sibling gmuxd binary (same dir as gmuxr)
+	// Not running — find sibling gmuxd binary (same dir as gmuxr).
 	self, err := os.Executable()
 	if err != nil {
-		return
+		return false
 	}
 	gmuxdBin := filepath.Join(filepath.Dir(self), "gmuxd")
 	if _, err := os.Stat(gmuxdBin); err != nil {
-		return
+		return false
 	}
 
 	cmd := exec.Command(gmuxdBin)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true} // detach from parent
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	if err := cmd.Start(); err != nil {
 		log.Printf("warning: could not start gmuxd: %v", err)
-		return
+		return false
 	}
-	// Detach — don't wait for gmuxd to exit
 	go cmd.Wait()
 
 	log.Printf("started gmuxd (pid %d)", cmd.Process.Pid)
+	return true
 }
 
 func registerWithGmuxd(sessionID, socketPath string) {

@@ -565,6 +565,23 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stale-badge {
+  font-family: 'Fira Code', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  color: oklch(75% 0.15 65);
+  background: oklch(75% 0.15 65 / 0.12);
+  border: 1px solid oklch(75% 0.15 65 / 0.25);
+  padding: 1px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .main-header-meta {

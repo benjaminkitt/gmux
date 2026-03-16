@@ -27,6 +27,13 @@ type Session struct {
 	SocketPath   string   `json:"socket_path,omitempty"`
 	TerminalCols uint16   `json:"terminal_cols,omitempty"`
 	TerminalRows uint16   `json:"terminal_rows,omitempty"`
+
+	// Build identity — sha256 of the gmuxr binary that owns this session.
+	// Populated from the runner's /meta `binary_hash` field.
+	BinaryHash string `json:"binary_hash,omitempty"`
+	// Stale is true when BinaryHash differs from gmuxd's expected runner hash.
+	// Indicates the session was started by a different build of gmuxr.
+	Stale bool `json:"stale,omitempty"`
 }
 
 // Status is the application-reported status.
