@@ -1,6 +1,6 @@
 ---
 title: Session Schema
-description: The session metadata model shared between gmuxr, gmuxd, and the web UI.
+description: The session metadata model shared between gmux, gmuxd, and the web UI.
 ---
 
 > Application-agnostic session metadata. Informed by research into Codex, Claude Code Desktop, T3 Code, and cmux sidebar APIs.
@@ -27,7 +27,7 @@ description: The session metadata model shared between gmuxr, gmuxd, and the web
 | `cwd` | string | Working directory |
 | `kind` | string | Adapter kind: `"shell"`, `"pi"`, `"opencode"`, etc. |
 
-### Process State (owned by gmuxr, authoritative)
+### Process State (owned by gmux, authoritative)
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -37,7 +37,7 @@ description: The session metadata model shared between gmuxr, gmuxd, and the web
 | `started_at` | ISO 8601 | When the process was started |
 | `exited_at` | ISO 8601 \| null | When the process exited |
 
-### Display (set by child or gmuxr, mutable)
+### Display (set by child or gmux, mutable)
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -46,18 +46,18 @@ description: The session metadata model shared between gmuxr, gmuxd, and the web
 | `status` | Status | no | Application-reported status (see below) |
 | `unread` | boolean | no | Whether this session has unseen activity. Default: false. Set true on output when not focused; cleared on focus. |
 
-### Build Identity (set by gmuxr, used by gmuxd)
+### Build Identity (set by gmux, used by gmuxd)
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `binary_hash` | string | no | SHA-256 hex digest of the gmuxr binary that owns this session. Computed once at startup from `os.Executable()`. |
-| `stale` | boolean | no | Set by gmuxd when `binary_hash` doesn't match the gmuxr binary gmuxd would launch for new sessions. Indicates the session was started by a different build. Default: false. |
+| `binary_hash` | string | no | SHA-256 hex digest of the gmux binary that owns this session. Computed once at startup from `os.Executable()`. |
+| `stale` | boolean | no | Set by gmuxd when `binary_hash` doesn't match the gmux binary gmuxd would launch for new sessions. Indicates the session was started by a different build. Default: false. |
 
-Stale detection allows the UI to show a visual indicator on sessions running an outdated gmuxr. This is important during development (frequent rebuilds) and after upgrades (old sessions survive daemon restart). The comparison is exact: any difference in binary content is a mismatch.
+Stale detection allows the UI to show a visual indicator on sessions running an outdated gmux. This is important during development (frequent rebuilds) and after upgrades (old sessions survive daemon restart). The comparison is exact: any difference in binary content is a mismatch.
 
 ### Status Object (set by child process)
 
-The child process can report its own status via a well-known mechanism (env variable pointing to gmuxr's socket, or escape sequences). This is advisory — gmux renders it but doesn't interpret it.
+The child process can report its own status via a well-known mechanism (env variable pointing to gmux's socket, or escape sequences). This is advisory — gmux renders it but doesn't interpret it.
 
 ```typescript
 interface Status {
@@ -92,7 +92,7 @@ The `label` is the human-readable text. The `state` determines the visual treatm
 
 **Option A — Environment variable + HTTP** (preferred):
 ```bash
-# gmuxr sets this in the child's environment
+# gmux sets this in the child's environment
 GMUX_SOCKET=/tmp/gmux-sessions/sess-abc123.sock
 
 # Child (or a hook) sets status via HTTP on the same socket
@@ -102,7 +102,7 @@ curl --unix-socket $GMUX_SOCKET http://localhost/status \
 
 **Option B — OSC escape sequences** (terminal-native):
 ```bash
-# OSC 7777 ; json ST  (custom, parsed by gmuxr's PTY reader)
+# OSC 7777 ; json ST  (custom, parsed by gmux's PTY reader)
 printf '\e]7777;{"label":"waiting","state":"attention"}\e\\'
 ```
 

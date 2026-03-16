@@ -64,7 +64,7 @@ func (g *Shell) Launchers() []adapter.Launcher {
 }
 
 func (g *Shell) Monitor(_ []byte) *adapter.Status {
-	// Shell title parsing is handled centrally in gmuxr so all sessions
+	// Shell title parsing is handled centrally in gmux so all sessions
 	// can use terminal titles as a fallback, not just shell sessions.
 	return nil
 }

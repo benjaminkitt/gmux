@@ -93,17 +93,17 @@ func launchersForAdapters(adapterList []adapter.Adapter, availableByName map[str
 	return launchers
 }
 
-// resolveGmuxr finds the gmuxr binary.
+// resolveGmux finds the gmux binary.
 // Priority: sibling to this binary > PATH lookup.
-// Both gmuxd and gmuxr are always installed to the same directory.
-func resolveGmuxr() string {
+// Both gmuxd and gmux are always installed to the same directory.
+func resolveGmux() string {
 	if exe, err := os.Executable(); err == nil {
-		sibling := filepath.Join(filepath.Dir(exe), "gmuxr")
+		sibling := filepath.Join(filepath.Dir(exe), "gmux")
 		if _, err := os.Stat(sibling); err == nil {
 			return sibling
 		}
 	}
-	if p, err := exec.LookPath("gmuxr"); err == nil {
+	if p, err := exec.LookPath("gmux"); err == nil {
 		return p
 	}
 	return ""
@@ -121,13 +121,13 @@ func launcherStates(ls []adapter.Launcher) []string {
 	return states
 }
 
-// launchGmuxr starts a detached gmuxr process with the given command and cwd.
+// launchGmux starts a detached gmux process with the given command and cwd.
 // Returns the PID on success.
-func launchGmuxr(gmuxrBin string, command []string, cwd string) (int, error) {
+func launchGmux(gmuxBin string, command []string, cwd string) (int, error) {
 	args := []string{"--cwd", cwd, "--"}
 	args = append(args, command...)
 
-	cmd := exec.Command(gmuxrBin, args...)
+	cmd := exec.Command(gmuxBin, args...)
 	cmd.Dir = cwd
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	cmd.Stdout = nil
@@ -142,13 +142,13 @@ func launchGmuxr(gmuxrBin string, command []string, cwd string) (int, error) {
 }
 
 func main() {
-	gmuxrBin := resolveGmuxr() // resolve once, use everywhere
-	if gmuxrBin != "" {
-		log.Printf("gmuxr: %s", gmuxrBin)
-		h := binhash.File(gmuxrBin)
+	gmuxBin := resolveGmux() // resolve once, use everywhere
+	if gmuxBin != "" {
+		log.Printf("gmux: %s", gmuxBin)
+		h := binhash.File(gmuxBin)
 		if h != "" {
 			discovery.ExpectedRunnerHash = h
-			log.Printf("gmuxr hash: %s…", h[:12])
+			log.Printf("gmux hash: %s…", h[:12])
 		}
 	}
 	launchConfig := discoverLaunchers()
@@ -324,19 +324,19 @@ func main() {
 			cwd = os.Getenv("HOME")
 		}
 
-		if gmuxrBin == "" {
-			writeError(w, http.StatusInternalServerError, "gmuxr_not_found", "gmuxr not found (install gmuxr alongside gmuxd)")
+		if gmuxBin == "" {
+			writeError(w, http.StatusInternalServerError, "gmux_not_found", "gmux not found (install gmux alongside gmuxd)")
 			return
 		}
 
-		pid, err := launchGmuxr(gmuxrBin, req.Command, cwd)
+		pid, err := launchGmux(gmuxBin, req.Command, cwd)
 		if err != nil {
-			log.Printf("launch: failed to start gmuxr: %v", err)
+			log.Printf("launch: failed to start gmux: %v", err)
 			writeError(w, http.StatusInternalServerError, "launch_failed", err.Error())
 			return
 		}
 
-		log.Printf("launch: started gmuxr pid=%d cwd=%s cmd=%v", pid, cwd, req.Command)
+		log.Printf("launch: started gmux pid=%d cwd=%s cmd=%v", pid, cwd, req.Command)
 		writeJSON(w, map[string]any{
 			"ok":   true,
 			"data": map[string]any{"pid": pid},
@@ -391,30 +391,30 @@ func main() {
 				writeError(w, http.StatusBadRequest, "not_resumable", "session is not resumable")
 				return
 			}
-			if gmuxrBin == "" {
-				writeError(w, http.StatusInternalServerError, "gmuxr_not_found", "gmuxr not found")
+			if gmuxBin == "" {
+				writeError(w, http.StatusInternalServerError, "gmux_not_found", "gmux not found")
 				return
 			}
 
 			// Record pending resume BEFORE launching so Register() can match.
 			pendingResumes.Add(sess.Command, sessionID)
 
-			pid, err := launchGmuxr(gmuxrBin, sess.Command, sess.Cwd)
+			pid, err := launchGmux(gmuxBin, sess.Command, sess.Cwd)
 			if err != nil {
-				log.Printf("resume: failed to start gmuxr: %v", err)
+				log.Printf("resume: failed to start gmux: %v", err)
 				writeError(w, http.StatusInternalServerError, "launch_failed", err.Error())
 				return
 			}
 
 			// Update in-place: session is now starting.
 			// Register() will merge in the live session data (socket, pid)
-			// when gmuxr calls POST /v1/register.
+			// when gmux calls POST /v1/register.
 			sess.Alive = true
 			sess.Resumable = false
 			sess.Status = &store.Status{Label: "starting", Working: true}
 			sessions.Upsert(sess)
 
-			log.Printf("resume: started gmuxr pid=%d for %s cwd=%s", pid, sessionID, sess.Cwd)
+			log.Printf("resume: started gmux pid=%d for %s cwd=%s", pid, sessionID, sess.Cwd)
 			writeJSON(w, map[string]any{
 				"ok":   true,
 				"data": map[string]any{"pid": pid, "session_id": sessionID},

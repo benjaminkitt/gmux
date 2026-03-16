@@ -39,7 +39,7 @@ type State struct {
 	// Transport
 	SocketPath string `json:"socket_path"`
 
-	// Build identity — sha256 of the gmuxr binary, computed once at startup.
+	// Build identity — sha256 of the gmux binary, computed once at startup.
 	// Used by gmuxd to detect stale runners from a different build.
 	BinaryHash string `json:"binary_hash,omitempty"`
 

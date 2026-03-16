@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build gmuxd and gmuxr release binaries.
+# Build gmuxd and gmux release binaries.
 # Usage: ./scripts/build.sh [--skip-frontend]
 set -euo pipefail
 
@@ -36,9 +36,9 @@ LDFLAGS="-s -w -X main.version=$VERSION"
 echo "→ Building gmuxd…"
 (cd "$ROOT/services/gmuxd" && go build -ldflags "$LDFLAGS" -o "$BIN/gmuxd" ./cmd/gmuxd)
 
-echo "→ Building gmuxr…"
-(cd "$ROOT/cli/gmuxr" && go build -ldflags "$LDFLAGS" -o "$BIN/gmuxr" ./cmd/gmuxr)
+echo "→ Building gmux…"
+(cd "$ROOT/cli/gmux" && go build -ldflags "$LDFLAGS" -o "$BIN/gmux" ./cmd/gmux)
 
 echo ""
-ls -lh "$BIN/gmuxd" "$BIN/gmuxr"
+ls -lh "$BIN/gmuxd" "$BIN/gmux"
 echo "✓ Build complete"

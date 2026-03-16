@@ -3,7 +3,7 @@ title: Writing an Adapter
 description: How to add first-class gmux support for a new tool.
 ---
 
-An adapter is a single Go file that teaches gmux how to work with a specific tool. It lives in `packages/adapter/adapters/` and is compiled into both `gmuxr` and `gmuxd`.
+An adapter is a single Go file that teaches gmux how to work with a specific tool. It lives in `packages/adapter/adapters/` and is compiled into both `gmux` and `gmuxd`.
 
 Read this page if you are adding support for a new tool. If you want the system-level overview first, see [Adapter Architecture](/develop/adapter-architecture). This page stays focused on the implementation recipe.
 
@@ -121,7 +121,7 @@ type Status struct {
 
 ## Adapter resolution
 
-When `gmuxr` launches a command, adapters are tried in this order:
+When `gmux` launches a command, adapters are tried in this order:
 
 1. **`GMUX_ADAPTER` env var** — explicit override
 2. **Registered adapters** — `Match()` in registration order; first match wins
@@ -131,7 +131,7 @@ A false negative is low cost because the shell adapter still handles the session
 
 ## Optional capabilities
 
-The base interface covers command matching, env injection, and PTY monitoring. Additional opt-in interfaces add richer integration. Implement them on the same struct; `gmuxr` or `gmuxd` discover them via type assertion.
+The base interface covers command matching, env injection, and PTY monitoring. Additional opt-in interfaces add richer integration. Implement them on the same struct; `gmux` or `gmuxd` discover them via type assertion.
 
 For the runtime behavior behind these interfaces, see [Adapter Architecture](/develop/adapter-architecture).
 

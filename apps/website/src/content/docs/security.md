@@ -97,7 +97,7 @@ No config file is fine — safe defaults are used (localhost only, tailscale dis
 
 ## Runner security
 
-Each session is managed by a `gmuxr` process that exposes a Unix socket (not a TCP port). Unix sockets are protected by filesystem permissions — only processes running as the same user can connect.
+Each session is managed by a `gmux` process that exposes a Unix socket (not a TCP port). Unix sockets are protected by filesystem permissions — only processes running as the same user can connect.
 
 `gmuxd` connects to these sockets to proxy terminal traffic. The proxy runs in the same user context.
 

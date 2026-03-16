@@ -46,7 +46,7 @@ This is intentional — silent fallback to defaults is dangerous for security se
 | `XDG_CONFIG_HOME` | Base directory for config file | `~/.config` |
 | `XDG_STATE_HOME` | Base directory for runtime state (tsnet) | `~/.local/state` |
 
-### gmuxr (session runner)
+### gmux (session runner)
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
@@ -54,9 +54,9 @@ This is intentional — silent fallback to defaults is dangerous for security se
 | `GMUX_ADAPTER` | Force a specific adapter instead of auto-detection | *(auto)* |
 | `GMUX_SOCKET_DIR` | Directory for session Unix sockets | `/tmp/gmux-sessions` |
 
-### Set by gmuxr in the child process
+### Set by gmux in the child process
 
-These are available inside every session launched by gmuxr. Use them to detect gmux or report status back:
+These are available inside every session launched by gmux. Use them to detect gmux or report status back:
 
 | Variable | Purpose | Example |
 |----------|---------|---------|
@@ -73,7 +73,7 @@ See [Adapter Architecture](/develop/adapter-architecture) for how to use the chi
 |------|---------|------------|
 | `~/.config/gmux/config.toml` | Config file | User |
 | `~/.local/state/gmux/tsnet/` | Tailscale state (when enabled) | gmuxd |
-| `/tmp/gmux-sessions/*.sock` | Live session Unix sockets | gmuxr |
+| `/tmp/gmux-sessions/*.sock` | Live session Unix sockets | gmux |
 
 ### Adapter-specific paths
 

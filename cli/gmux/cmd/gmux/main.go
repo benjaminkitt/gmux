@@ -11,15 +11,16 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/gmuxapp/gmux/cli/gmuxr/internal/binhash"
-	"github.com/gmuxapp/gmux/cli/gmuxr/internal/localterm"
-	"github.com/gmuxapp/gmux/cli/gmuxr/internal/naming"
-	"github.com/gmuxapp/gmux/cli/gmuxr/internal/ptyserver"
-	"github.com/gmuxapp/gmux/cli/gmuxr/internal/session"
+	"github.com/gmuxapp/gmux/cli/gmux/internal/binhash"
+	"github.com/gmuxapp/gmux/cli/gmux/internal/localterm"
+	"github.com/gmuxapp/gmux/cli/gmux/internal/naming"
+	"github.com/gmuxapp/gmux/cli/gmux/internal/ptyserver"
+	"github.com/gmuxapp/gmux/cli/gmux/internal/session"
 	"github.com/gmuxapp/gmux/packages/adapter"
 	"github.com/gmuxapp/gmux/packages/adapter/adapters"
 )
@@ -29,23 +30,34 @@ import (
 var version = "dev"
 
 func main() {
-	log.SetPrefix("gmuxr: ")
+	log.SetPrefix("gmux: ")
 	log.SetFlags(0)
 
-	// Subcommand: gmuxr adapters → print launcher JSON and exit
+	// Internal subcommand: gmux adapters → print launcher JSON and exit.
+	// Used by gmuxd to discover available adapters.
 	if len(os.Args) > 1 && os.Args[1] == "adapters" {
 		out, _ := json.Marshal(adapters.AllLaunchers())
 		fmt.Println(string(out))
 		return
 	}
 
-	title := flag.String("title", "", "optional session title")
-	cwd := flag.String("cwd", "", "working directory (default: current)")
+	// Internal flags used by gmuxd when launching sessions.
+	// Users don't need these — gmux uses cwd from the current directory.
+	title := flag.String("title", "", "")
+	cwd := flag.String("cwd", "", "")
 	flag.Parse()
 
 	args := flag.Args()
+
+	// No args → open the UI in a browser.
 	if len(args) == 0 {
-		args = []string{"pi"}
+		gmuxdAddr := os.Getenv("GMUXD_ADDR")
+		if gmuxdAddr == "" {
+			gmuxdAddr = "http://localhost:8790"
+		}
+		ensureGmuxd(gmuxdAddr)
+		openBrowser(gmuxdAddr)
+		return
 	}
 
 	workDir := *cwd
@@ -176,7 +188,7 @@ func main() {
 		// In interactive mode:
 		// - SIGHUP → detach local terminal, keep session running
 		// - SIGINT/SIGTERM are consumed by raw mode and forwarded to child via PTY
-		//   (but we still catch them on gmuxr in case raw mode is somehow bypassed)
+		//   (but we still catch them on gmux in case raw mode is somehow bypassed)
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)
 
@@ -242,7 +254,7 @@ func ensureGmuxd(gmuxdAddr string) bool {
 		}
 	}
 
-	// Not running — find sibling gmuxd binary (same dir as gmuxr).
+	// Not running — find sibling gmuxd binary (same dir as gmux).
 	self, err := os.Executable()
 	if err != nil {
 		return false
@@ -277,7 +289,7 @@ func registerWithGmuxd(sessionID, socketPath string) {
 		"socket_path": socketPath,
 	})
 
-	// Retry a few times — gmuxr may start before the HTTP server is ready
+	// Retry a few times — gmux may start before the HTTP server is ready
 	for i := 0; i < 5; i++ {
 		if i > 0 {
 			time.Sleep(500 * time.Millisecond)
@@ -298,6 +310,53 @@ func registerWithGmuxd(sessionID, socketPath string) {
 type ptyWriterFunc func([]byte) (int, error)
 
 func (f ptyWriterFunc) Write(p []byte) (int, error) { return f(p) }
+
+// openBrowser opens the gmux UI. Prefers Chrome/Chromium in --app mode
+// for a standalone window; falls back to the default browser.
+func openBrowser(url string) {
+	// Wait briefly for gmuxd to be ready if we just started it.
+	client := &http.Client{Timeout: 500 * time.Millisecond}
+	for range 10 {
+		if resp, err := client.Get(url + "/v1/health"); err == nil {
+			resp.Body.Close()
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	// Try Chrome/Chromium in --app mode first.
+	var browsers []string
+	switch runtime.GOOS {
+	case "darwin":
+		// macOS: use open -a to find Chrome.
+		for _, app := range []string{"Google Chrome", "Chromium"} {
+			cmd := exec.Command("open", "-a", app, "--args", "--app="+url)
+			if err := cmd.Start(); err == nil {
+				return
+			}
+		}
+	default:
+		browsers = []string{"google-chrome-stable", "google-chrome", "chromium-browser", "chromium"}
+	}
+
+	for _, browser := range browsers {
+		if p, err := exec.LookPath(browser); err == nil {
+			cmd := exec.Command(p, "--app="+url)
+			cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+			if err := cmd.Start(); err == nil {
+				return
+			}
+		}
+	}
+
+	// Fallback: default browser.
+	switch runtime.GOOS {
+	case "darwin":
+		exec.Command("open", url).Start()
+	default:
+		exec.Command("xdg-open", url).Start()
+	}
+}
 
 func deregisterFromGmuxd(sessionID string) {
 	gmuxdAddr := os.Getenv("GMUXD_ADDR")

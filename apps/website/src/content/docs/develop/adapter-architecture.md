@@ -1,6 +1,6 @@
 ---
 title: Adapter Architecture
-description: How adapters, gmuxr, and gmuxd work together at runtime.
+description: How adapters, gmux, and gmuxd work together at runtime.
 ---
 
 This page describes the runtime architecture behind gmux adapters: which component does what, how sessions are discovered, how file-backed integrations work, and how children can report status back to gmux.
@@ -11,9 +11,9 @@ If you want the user-facing overview, see [Adapters](/adapters). If you want to 
 
 ## Two processes, one adapter system
 
-Adapters are defined once in `packages/adapter` and used by both `gmuxr` and `gmuxd`.
+Adapters are defined once in `packages/adapter` and used by both `gmux` and `gmuxd`.
 
-- **`gmuxr`** is per-session. It launches the child, owns the PTY, injects environment variables, and interprets live output.
+- **`gmux`** is per-session. It launches the child, owns the PTY, injects environment variables, and interprets live output.
 - **`gmuxd`** is per-machine. It discovers running sessions, watches adapter-owned files, and surfaces resumable sessions.
 
 That split is why the adapter system is a set of small interfaces instead of one giant one.
@@ -23,10 +23,10 @@ That split is why the adapter system is a set of small interfaces instead of one
 | Concern | Component | How |
 |---|---|---|
 | Adapter availability detection | `gmuxd` | `Adapter.Discover()` |
-| Command matching | `gmuxr` | `Adapter.Match()` |
-| Child env injection | `gmuxr` | `Adapter.Env()` |
-| PTY output monitoring | `gmuxr` | `Adapter.Monitor()` |
-| Child self-report API | `gmuxr` | Unix socket HTTP endpoints |
+| Command matching | `gmux` | `Adapter.Match()` |
+| Child env injection | `gmux` | `Adapter.Env()` |
+| PTY output monitoring | `gmux` | `Adapter.Monitor()` |
+| Child self-report API | `gmux` | Unix socket HTTP endpoints |
 | Launch menu discovery | `gmuxd` | `Launchable` + compiled adapter set |
 | Session file discovery | `gmuxd` | `SessionFiler` |
 | Session file attribution | `gmuxd` | file scanner + matching |
@@ -36,23 +36,23 @@ That split is why the adapter system is a set of small interfaces instead of one
 
 ## Launch lifecycle
 
-When you run a command through `gmuxr`:
+When you run a command through `gmux`:
 
-1. `gmuxr` resolves the adapter
+1. `gmux` resolves the adapter
    - `GMUX_ADAPTER=<name>` override, if set
    - otherwise first matching registered adapter wins
    - otherwise shell fallback
-2. `gmuxr` starts the child under a PTY
-3. `gmuxr` injects the standard `GMUX_*` environment variables
-4. `gmuxr` feeds PTY output into `Adapter.Monitor()`
-5. `gmuxr` serves the session on its Unix socket (`/meta`, `/events`, terminal attach, child callbacks)
+2. `gmux` starts the child under a PTY
+3. `gmux` injects the standard `GMUX_*` environment variables
+4. `gmux` feeds PTY output into `Adapter.Monitor()`
+5. `gmux` serves the session on its Unix socket (`/meta`, `/events`, terminal attach, child callbacks)
 6. `gmuxd` discovers the runner socket, queries `/meta`, and subscribes to `/events`
 
 The command itself is never rewritten by the adapter. Adapters can add environment variables, but what the user launched is exactly what runs.
 
 ## Adapter resolution
 
-Adapter selection happens entirely in `gmuxr`:
+Adapter selection happens entirely in `gmux`:
 
 1. **Explicit override**: `GMUX_ADAPTER=<name>`
 2. **Registered adapters in order**: first `Match()` wins
@@ -101,7 +101,7 @@ A few important consequences:
 - launch menu support is optional, like other adapter capabilities
 - adapter availability is mandatory, because every adapter must implement `Discover()`
 - one adapter can expose zero, one, or many launch presets
-- `gmuxd` no longer shells out to `gmuxr adapters` to discover launchers
+- `gmuxd` no longer shells out to `gmux adapters` to discover launchers
 - the shell fallback also implements `Launchable`, so shell appears in the UI without a separate special-case launcher registry
 - unavailable launchers are omitted from the launch config entirely
 
@@ -206,7 +206,7 @@ For a concrete example, see [pi](/integrations/pi).
 
 ## Child awareness protocol
 
-Every child launched by `gmuxr` gets a small protocol for detecting gmux and reporting back.
+Every child launched by `gmux` gets a small protocol for detecting gmux and reporting back.
 
 ### Environment variables
 
@@ -222,7 +222,7 @@ Most tools ignore these. gmux-aware tools, wrappers, or hooks can use them to in
 
 ### Child-to-runner endpoints
 
-Served by `gmuxr` on the session socket:
+Served by `gmux` on the session socket:
 
 | Endpoint | Method | Purpose |
 |---|---|---|

@@ -11,7 +11,7 @@ Long-running command-line work is easy to start and annoying to supervise. AI ag
 
 ## What it does
 
-- Launches commands as managed sessions through `gmuxr`
+- Launches commands as managed sessions through `gmux`
 - Groups sessions by project directory in a sidebar
 - Shows live status: working (cyan dot) or needs attention (amber dot)
 - Provides a full interactive terminal in the browser via xterm.js
@@ -22,12 +22,12 @@ Long-running command-line work is easy to start and annoying to supervise. AI ag
 
 ### Sessions
 
-A session is any command launched through `gmuxr`:
+A session is any command launched through `gmux`:
 
 ```bash
-gmuxr pi
-gmuxr -- make build
-gmuxr -- pytest --watch
+gmux pi
+gmux make build
+gmux pytest --watch
 ```
 
 Each session gets a PTY, a WebSocket server, and an adapter for status extraction.
@@ -44,10 +44,10 @@ See [Adapters](/adapters) for details.
 ### Architecture
 
 ```
-gmuxr (per session) → gmuxd (per machine) → browser
+gmux (per session) → gmuxd (per machine) → browser
 ```
 
-- **gmuxr** owns the child process and its live state
+- **gmux** owns the child process and its live state
 - **gmuxd** discovers sessions, proxies connections, and serves the web UI
 - **Browser** renders the sidebar and attaches to terminals
 

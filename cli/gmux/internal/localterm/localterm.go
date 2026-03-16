@@ -1,6 +1,6 @@
-// Package localterm provides transparent local terminal attach for gmuxr.
+// Package localterm provides transparent local terminal attach for gmux.
 // When stdin is an interactive terminal, it relays I/O between the calling
-// terminal and the child's PTY, making "gmuxr app" behave like "app".
+// terminal and the child's PTY, making "gmux app" behave like "app".
 package localterm
 
 import (

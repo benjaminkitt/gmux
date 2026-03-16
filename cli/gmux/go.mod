@@ -1,4 +1,4 @@
-module github.com/gmuxapp/gmux/cli/gmuxr
+module github.com/gmuxapp/gmux/cli/gmux
 
 go 1.26
 

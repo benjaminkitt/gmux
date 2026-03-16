@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-// PendingResumes tracks sessions being resumed. When gmuxr registers,
+// PendingResumes tracks sessions being resumed. When gmux registers,
 // we match by command (which contains the unique session file path)
 // and merge into the existing store entry.
 type PendingResumes struct {

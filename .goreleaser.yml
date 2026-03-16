@@ -22,10 +22,10 @@ builds:
     ldflags:
       - -s -w
 
-  - id: gmuxr
-    main: ./cmd/gmuxr
-    dir: cli/gmuxr
-    binary: gmuxr
+  - id: gmux
+    main: ./cmd/gmux
+    dir: cli/gmux
+    binary: gmux
     env:
       - CGO_ENABLED=0
       - GOWORK={{ .Env.GOWORK }}
@@ -42,7 +42,7 @@ archives:
   - id: default
     ids:
       - gmuxd
-      - gmuxr
+      - gmux
     name_template: "gmux_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     formats:
       - tar.gz
@@ -73,14 +73,12 @@ homebrew_casks:
     license: "MIT"
     binaries:
       - gmuxd
-      - gmuxr
+      - gmux
     caveats: |
-      Start the daemon:
-        gmuxd
-
-      Then open http://localhost:8790 in your browser.
+      Open the UI:
+        gmux
 
       Launch a session:
-        gmuxr pi              # coding agent
-        gmuxr -- pytest -x    # test runner
-        gmuxr -- make build   # any command
+        gmux pi              # coding agent
+        gmux pytest -x       # test runner
+        gmux make build      # any command

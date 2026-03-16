@@ -57,9 +57,9 @@ There are two ways to start a new session:
 ### From the command line
 
 ```bash
-gmuxr pi                    # coding agent
-gmuxr -- pytest --watch     # any command
-gmuxr -- make build
+gmux pi                    # coding agent
+gmux pytest --watch     # any command
+gmux make build
 ```
 
 The session appears in the sidebar immediately.
@@ -110,7 +110,7 @@ The ctrl button highlights when armed and disarms after the next keypress or aft
 
 ## Self-reporting status
 
-Any process can update its own sidebar entry without a custom adapter. gmuxr sets `$GMUX_SOCKET` in the child's environment:
+Any process can update its own sidebar entry without a custom adapter. gmux sets `$GMUX_SOCKET` in the child's environment:
 
 ```bash
 # Show "building" with a working dot

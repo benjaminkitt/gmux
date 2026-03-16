@@ -10,13 +10,13 @@ description: How gmux versions its artifacts and contracts.
 
 ## What is versioned
 
-- **`gmuxd`** and **`gmuxr`** binary versions (semver)
+- **`gmuxd`** and **`gmux`** binary versions (semver)
 - gmuxd REST API via URL path (`/v1/...`)
 - Session metadata schema (see [Session Schema](/develop/session-schema))
 
 ## Binary compatibility
 
-gmuxd detects whether running gmuxr sessions match the current build using binary hash comparison. Mismatched sessions are marked **stale** in the UI — they still work, but may behave differently than newly launched sessions. See [Architecture](/architecture) for details.
+gmuxd detects whether running gmux sessions match the current build using binary hash comparison. Mismatched sessions are marked **stale** in the UI — they still work, but may behave differently than newly launched sessions. See [Architecture](/architecture) for details.
 
 ## Contract versioning
 

@@ -19,9 +19,9 @@ Without an adapter, gmux still tracks whether the process is alive — but with 
 You don't configure adapters. gmux recognizes tools by their command name:
 
 ```bash
-gmuxr pi            # → pi adapter
-gmuxr bash          # → shell adapter (fallback)
-gmuxr -- make build # → shell adapter (fallback)
+gmux pi            # → pi adapter
+gmux bash          # → shell adapter (fallback)
+gmux make build # → shell adapter (fallback)
 ```
 
 If no specific adapter matches, the **shell** adapter handles it.
@@ -44,7 +44,7 @@ See [pi integration](/integrations/pi) for details.
 
 ## Self-reporting
 
-Any process can report its own status without a custom adapter. `gmuxr` sets `$GMUX_SOCKET` in the child's environment:
+Any process can report its own status without a custom adapter. `gmux` sets `$GMUX_SOCKET` in the child's environment:
 
 ```bash
 curl -X PUT --unix-socket "$GMUX_SOCKET" \

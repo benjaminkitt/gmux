@@ -15,14 +15,14 @@ After a reboot, opening gmux shows your previous sessions in a "suspended" state
 
 ### On shutdown (best-effort)
 
-When gmuxr exits (clean shutdown or SIGTERM), it writes the tail of its scrollback ring buffer to a file alongside the session metadata. This is best-effort — a hard power-off may lose it.
+When gmux exits (clean shutdown or SIGTERM), it writes the tail of its scrollback ring buffer to a file alongside the session metadata. This is best-effort — a hard power-off may lose it.
 
 ### On resume
 
 1. gmuxd discovers persisted session files on startup (it already does this for `pi` sessions).
 2. The user clicks **Resume** on a session or **Resume All** on a folder.
-3. gmuxd launches a new gmuxr with the same command and cwd.
-4. The new gmuxr seeds its scrollback with the saved content, followed by a separator:
+3. gmuxd launches a new gmux with the same command and cwd.
+4. The new gmux seeds its scrollback with the saved content, followed by a separator:
 
 ```
 ─── session resumed ───
@@ -32,11 +32,11 @@ When gmuxr exits (clean shutdown or SIGTERM), it writes the tail of its scrollba
 
 ### What's needed
 
-- **gmuxr**: Write raw scrollback to `~/.local/state/gmux/scrollback/<session-id>.raw` on exit.
+- **gmux**: Write raw scrollback to `~/.local/state/gmux/scrollback/<session-id>.raw` on exit.
 - **gmuxd**: Discover persisted scrollback files. Include them in session metadata so the UI knows scrollback is available.
-- **gmuxr**: Accept a `--seed-scrollback <path>` flag that pre-fills the ring buffer before the child starts.
+- **gmux**: Accept a `--seed-scrollback <path>` flag that pre-fills the ring buffer before the child starts.
 - **UI**: "Resume All" button on folder headers. Visual treatment for suspended sessions.
 
 ## Prerequisite
 
-This builds on the work to keep gmuxr alive after child exit — once sessions survive process exit within a single boot, surviving across boots is the natural next step.
+This builds on the work to keep gmux alive after child exit — once sessions survive process exit within a single boot, surviving across boots is the natural next step.

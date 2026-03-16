@@ -64,9 +64,9 @@ That's it. Your own tailscale account is automatically whitelisted — gmuxd det
 ### 4. Restart gmuxd
 
 ```bash
-# If gmuxd is running, kill it — gmuxr will auto-start it next time
+# If gmuxd is running, kill it — gmux will auto-start it next time
 pkill gmuxd
-gmuxr pi  # or any command — gmuxd starts automatically
+gmux pi  # or any command — gmuxd starts automatically
 ```
 
 Look for the log line:

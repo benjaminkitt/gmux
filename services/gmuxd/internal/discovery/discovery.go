@@ -18,7 +18,7 @@ import (
 	"github.com/gmuxapp/gmux/services/gmuxd/internal/store"
 )
 
-// ExpectedRunnerHash is the sha256 hash of the gmuxr binary that gmuxd
+// ExpectedRunnerHash is the sha256 hash of the gmux binary that gmuxd
 // would launch for new sessions. Set by main at startup. Sessions whose
 // binary_hash differs are marked stale.
 var ExpectedRunnerHash string

@@ -17,8 +17,8 @@ import (
 	"syscall"
 
 	"github.com/creack/pty"
-	"github.com/gmuxapp/gmux/cli/gmuxr/internal/ringbuf"
-	"github.com/gmuxapp/gmux/cli/gmuxr/internal/session"
+	"github.com/gmuxapp/gmux/cli/gmux/internal/ringbuf"
+	"github.com/gmuxapp/gmux/cli/gmux/internal/session"
 	"github.com/gmuxapp/gmux/packages/adapter"
 	"github.com/gmuxapp/gmux/packages/adapter/adapters"
 	"nhooyr.io/websocket"
@@ -97,7 +97,7 @@ func New(cfg Config) (*Server, error) {
 	// Set KITTY_WINDOW_ID so programs that check for kitty graphics support (e.g. pi, viu)
 	// will use it. This is legitimate — our terminal genuinely handles the kitty protocol.
 	cmd.Env = append(cmd.Env,
-		"TERM_PROGRAM=gmuxr",
+		"TERM_PROGRAM=gmux",
 		"TERM_PROGRAM_VERSION=0.1.0",
 		"COLORTERM=truecolor",
 		"KITTY_WINDOW_ID=1",

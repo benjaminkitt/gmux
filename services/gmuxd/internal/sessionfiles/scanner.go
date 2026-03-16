@@ -140,7 +140,7 @@ func (sc *Scanner) existingResumeKeys() map[string]bool {
 }
 
 // PurgeStaleSessions removes dead sessions that have no resume_key and
-// are older than maxAge. These are short-lived gmuxr sessions that exited
+// are older than maxAge. These are short-lived gmux sessions that exited
 // without ever being attributed to a session file.
 func (sc *Scanner) PurgeStaleSessions(maxAge time.Duration) {
 	now := time.Now().UTC()

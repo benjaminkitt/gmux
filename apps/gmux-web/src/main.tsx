@@ -994,7 +994,7 @@ function MainHeader({ session, onKill }: { session: Session | null; onKill?: (id
         <div class="main-header-title">
           {session.title}
           {session.stale && (
-            <span class="stale-badge" title="This session is running a different build of gmuxr. Restart the session to update.">
+            <span class="stale-badge" title="This session is running a different build of gmux. Restart the session to update.">
               outdated
             </span>
           )}

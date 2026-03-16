@@ -5,7 +5,7 @@ description: "Runtime structure: runner, daemon, and embedded web UI."
 
 ## Runtime pieces
 
-### `gmuxr` — session runner
+### `gmux` — session runner
 
 One per session. It:
 
@@ -14,7 +14,7 @@ One per session. It:
 - Exposes the session on a Unix socket (metadata, events, terminal attach)
 - Runs adapter logic over child output
 
-`gmuxr` is the source of truth for a live session.
+`gmux` is the source of truth for a live session.
 
 ### `gmuxd` — machine daemon
 
@@ -27,9 +27,9 @@ One per machine. It:
 - Serves the embedded web frontend as a SPA
 - Manages session launch, kill, dismiss, and resume
 
-`gmuxd` is stateless — if it restarts, it rediscovers running sessions. On startup it hashes the `gmuxr` binary it ships with; sessions running a different build are marked **stale** so the UI can flag them.
+`gmuxd` is stateless — if it restarts, it rediscovers running sessions. On startup it hashes the `gmux` binary it ships with; sessions running a different build are marked **stale** so the UI can flag them.
 
-`gmuxr` auto-starts `gmuxd` if it isn't already running.
+`gmux` auto-starts `gmuxd` if it isn't already running.
 
 Configuration lives in `~/.config/gmux/config.toml`. See [Security](/security) and [Remote Access](/remote-access) for details.
 
@@ -40,10 +40,10 @@ The frontend is built with Preact and xterm.js, compiled into a static bundle, a
 ## Data flow
 
 ```
-gmuxr ──Unix socket──→ gmuxd ──HTTP/SSE/WS──→ browser
+gmux ──Unix socket──→ gmuxd ──HTTP/SSE/WS──→ browser
 ```
 
-1. `gmuxr` launches a session and exposes it on a Unix socket
+1. `gmux` launches a session and exposes it on a Unix socket
 2. `gmuxd` discovers the socket and reads session metadata
 3. `gmuxd` subscribes to the runner's SSE event stream for live updates
 4. The browser fetches sessions from `GET /v1/sessions` and subscribes to `GET /v1/events`
@@ -70,7 +70,7 @@ All served by `gmuxd` on a single port (default `:8790`):
 
 | Path | Language | Purpose |
 |---|---|---|
-| `cli/gmuxr` | Go | Session launcher — PTY, WebSocket, adapters |
+| `cli/gmux` | Go | Session launcher — PTY, WebSocket, adapters |
 | `services/gmuxd` | Go | Daemon — discovery, proxy, embedded web UI |
 | `apps/gmux-web` | TypeScript/Preact | Browser UI — sidebar, terminal, header |
 | `packages/protocol` | TypeScript | Shared schemas (zod-validated) |

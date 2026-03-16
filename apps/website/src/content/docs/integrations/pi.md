@@ -3,7 +3,7 @@ title: pi
 description: How gmux works with the pi coding agent.
 ---
 
-gmux has built-in support for [pi](https://github.com/mariozechner/pi-coding-agent). No configuration is needed — launch pi through gmuxr and everything works automatically.
+gmux has built-in support for [pi](https://github.com/mariozechner/pi-coding-agent). No configuration is needed — launch pi through gmux and everything works automatically.
 
 ## What you get
 
@@ -41,21 +41,21 @@ Pi appears in the launch menu only when it is available on the current machine. 
 There are two separate pi checks:
 
 - **availability discovery** in `gmuxd`: run `pi --version` at startup to see whether pi is installed and the pi launcher should be shown
-- **runtime matching** in `gmuxr`: scan the launched command for a `pi` or `pi-coding-agent` binary name
+- **runtime matching** in `gmux`: scan the launched command for a `pi` or `pi-coding-agent` binary name
 
 The runtime matching works with direct invocation, full paths, `npx`, `nix run`, and other wrappers:
 
 ```bash
-gmuxr pi                              # ✓ matched
-gmuxr /home/user/.local/bin/pi        # ✓ matched
-gmuxr npx pi                          # ✓ matched
-gmuxr -- echo "not pi"                # ✗ not matched
+gmux pi                              # ✓ matched
+gmux /home/user/.local/bin/pi        # ✓ matched
+gmux npx pi                          # ✓ matched
+gmux echo "not pi"                # ✗ not matched
 ```
 
 If detection fails (e.g., an unusual wrapper), override it:
 
 ```bash
-GMUX_ADAPTER=pi gmuxr my-pi-wrapper
+GMUX_ADAPTER=pi gmux my-pi-wrapper
 ```
 
 ### Session files

@@ -1,6 +1,6 @@
 // Package adapter defines the interface for teaching gmux how to work
 // with specific tools. Adapters are matched by command and produce
-// Status events for the sidebar. Both gmuxr and gmuxd import this package.
+// Status events for the sidebar. Both gmux and gmuxd import this package.
 package adapter
 
 import "path/filepath"

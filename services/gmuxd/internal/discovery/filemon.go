@@ -315,7 +315,7 @@ func (fm *FileMonitor) handleFileChange(path string) {
 	}
 	for _, evt := range events {
 		if evt.Title != "" {
-			// Keep gmuxr authoritative for title precedence: patch the runner so
+			// Keep gmux authoritative for title precedence: patch the runner so
 			// future shell/OSC title updates stay below the adapter title.
 			_ = patchRunnerMeta(ms.socketPath, evt.Title, "")
 			sess.Title = evt.Title

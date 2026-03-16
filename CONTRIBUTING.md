@@ -6,7 +6,7 @@
 |------|---------|---------|
 | **Node.js** ≥ 20 | JS/TS tooling | [nodejs.org](https://nodejs.org) |
 | **pnpm** ≥ 9 | Package manager | `npm i -g pnpm` |
-| **Go** ≥ 1.22 | Native services (gmuxd, gmuxr) | [go.dev](https://go.dev/dl/) |
+| **Go** ≥ 1.22 | Native services (gmuxd, gmux) | [go.dev](https://go.dev/dl/) |
 | **watchexec** | Auto-rebuild Go on file change (dev mode) | `pacman -S watchexec` / `cargo install watchexec-cli` / [github.com/watchexec/watchexec](https://github.com/watchexec/watchexec/releases) |
 | **jj** | Version control | [martinvonz.github.io/jj](https://martinvonz.github.io/jj/) |
 
