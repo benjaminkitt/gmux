@@ -60,19 +60,18 @@ changelog:
       - "^test:"
       - "^chore:"
 
-brews:
+homebrew_casks:
   - name: gmux
     repository:
       owner: gmuxapp
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    directory: Formula
-    homepage: "https://github.com/gmuxapp/gmux"
+    homepage: "https://gmux.app"
     description: "Terminal session orchestration — manage AI agents, test runners, and long-running processes from your browser"
     license: "MIT"
-    install: |
-      bin.install "gmux"
-      bin.install "gmuxd"
+    binaries:
+      - gmux
+      - gmuxd
     caveats: |
       Open the UI:
         gmux
