@@ -196,15 +196,12 @@ func TestParseNewLinesUserMessage(t *testing.T) {
 	events := NewPi().ParseNewLines([]string{
 		`{"type":"message","id":"u1","message":{"role":"user","content":[{"type":"text","text":"Fix the bug"}]}}`,
 	})
-	// Should produce: working status + title from user text
-	if len(events) != 2 {
-		t.Fatalf("expected 2 events (status + title), got %d", len(events))
+	// Should produce: working status only (title comes from ParseSessionFile on attribution)
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event (status), got %d", len(events))
 	}
 	if events[0].Status == nil || !events[0].Status.Working {
 		t.Error("expected working=true status")
-	}
-	if events[1].Title != "Fix the bug" {
-		t.Errorf("expected title from user text, got %q", events[1].Title)
 	}
 }
 

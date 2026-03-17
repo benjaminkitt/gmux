@@ -246,23 +246,10 @@ func (c *Claude) ParseNewLines(lines []string) []adapter.FileEvent {
 
 		case "user":
 			// User submitted a message — assistant will start working.
+			// Title comes from ParseSessionFile on attribution, not here.
 			events = append(events, adapter.FileEvent{
 				Status: &adapter.Status{Working: true},
 			})
-			// Use first user message text as title hint if this looks like
-			// a prompt (not a context reference).
-			var msg struct {
-				Message struct {
-					Content json.RawMessage `json:"content"`
-				} `json:"message"`
-			}
-			if err := json.Unmarshal([]byte(line), &msg); err == nil {
-				if text := extractClaudeUserText(msg.Message.Content); text != "" {
-					events = append(events, adapter.FileEvent{
-						Title: truncateTitle(text, 80),
-					})
-				}
-			}
 
 		case "assistant":
 			// Check if this is a final assistant message (text content, no tool_use).

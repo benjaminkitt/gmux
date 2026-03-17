@@ -211,7 +211,6 @@ func (c *Codex) ParseSessionFile(path string) (*adapter.SessionFileInfo, error) 
 //   - role:"user" type:"message" → extract text for title hint
 func (c *Codex) ParseNewLines(lines []string) []adapter.FileEvent {
 	var events []adapter.FileEvent
-	var pendingUserText string
 
 	for _, line := range lines {
 		if line == "" {
@@ -230,28 +229,14 @@ func (c *Codex) ParseNewLines(lines []string) []adapter.FileEvent {
 		}
 
 		switch entry.Type {
-		case "response_item":
-			// Capture user message text for title extraction.
-			if entry.Payload.Role == "user" && entry.Payload.Type == "message" {
-				if text := extractCodexUserText(entry.Payload.Content); text != "" {
-					pendingUserText = text
-				}
-			}
-
 		case "event_msg":
 			switch entry.Payload.Type {
 			case "user_message":
 				// User submitted a prompt — assistant will start working.
+				// Title comes from ParseSessionFile on attribution, not here.
 				events = append(events, adapter.FileEvent{
 					Status: &adapter.Status{Working: true},
 				})
-				// Apply pending user text as title.
-				if pendingUserText != "" {
-					events = append(events, adapter.FileEvent{
-						Title: truncateTitle(pendingUserText, 80),
-					})
-					pendingUserText = ""
-				}
 
 			case "task_complete", "turn_cancelled", "turn_aborted":
 				// Turn finished — clear status.

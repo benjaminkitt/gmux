@@ -225,12 +225,6 @@ func (p *Pi) ParseNewLines(lines []string) []adapter.FileEvent {
 				events = append(events, adapter.FileEvent{
 					Status: &adapter.Status{Working: true},
 				})
-				// Use first user message text as title hint.
-				if text := extractFirstUserText(line); text != "" {
-					events = append(events, adapter.FileEvent{
-						Title: truncateTitle(text, 80),
-					})
-				}
 
 			case "assistant":
 				if msg.Message.StopReason == "stop" {

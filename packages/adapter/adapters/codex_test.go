@@ -210,15 +210,12 @@ func TestCodexParseNewLinesUserMessage(t *testing.T) {
 		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Fix the bug"}]}}`,
 		`{"type":"event_msg","payload":{"type":"user_message"}}`,
 	})
-	// Should produce: working status + title
-	if len(events) != 2 {
-		t.Fatalf("expected 2 events, got %d", len(events))
+	// Should produce: working status only (title comes from ParseSessionFile on attribution)
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
 	}
 	if events[0].Status == nil || !events[0].Status.Working {
 		t.Error("expected working=true status")
-	}
-	if events[1].Title != "Fix the bug" {
-		t.Errorf("expected title, got %q", events[1].Title)
 	}
 }
 
@@ -253,12 +250,12 @@ func TestCodexParseNewLinesSkipsSystemContext(t *testing.T) {
 		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Fix the bug"}]}}`,
 		`{"type":"event_msg","payload":{"type":"user_message"}}`,
 	})
-	// Should use "Fix the bug" as title, not the system context
-	if len(events) != 2 {
-		t.Fatalf("expected 2 events, got %d", len(events))
+	// Should produce: working status only (title comes from ParseSessionFile)
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
 	}
-	if events[1].Title != "Fix the bug" {
-		t.Errorf("expected 'Fix the bug', got %q", events[1].Title)
+	if events[0].Status == nil || !events[0].Status.Working {
+		t.Error("expected working=true status")
 	}
 }
 
@@ -281,18 +278,15 @@ func TestCodexParseNewLinesMultiTurn(t *testing.T) {
 		`{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Done."}]}}`,
 		`{"type":"event_msg","payload":{"type":"task_complete"}}`,
 	})
-	// user_message → working + title, task_complete → idle
-	if len(events) != 3 {
-		t.Fatalf("expected 3 events, got %d: %v", len(events), events)
+	// user_message → working, task_complete → idle
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events, got %d: %v", len(events), events)
 	}
 	if !events[0].Status.Working {
 		t.Error("first should be working=true")
 	}
-	if events[1].Title != "Fix it" {
-		t.Errorf("second should be title, got %v", events[1])
-	}
-	if events[2].Status.Working {
-		t.Error("third should be working=false")
+	if events[1].Status.Working {
+		t.Error("second should be working=false")
 	}
 }
 

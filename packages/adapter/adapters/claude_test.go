@@ -285,15 +285,12 @@ func TestClaudeParseNewLinesUserMessage(t *testing.T) {
 	events := NewClaude().ParseNewLines([]string{
 		`{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Fix the bug"}]},"uuid":"u1"}`,
 	})
-	// Should produce: working status + title from user text
-	if len(events) != 2 {
-		t.Fatalf("expected 2 events (status + title), got %d", len(events))
+	// Should produce: working status only (title comes from ParseSessionFile on attribution)
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event (status), got %d", len(events))
 	}
 	if events[0].Status == nil || !events[0].Status.Working {
 		t.Error("expected working=true status")
-	}
-	if events[1].Title != "Fix the bug" {
-		t.Errorf("expected title from user text, got %q", events[1].Title)
 	}
 }
 
@@ -356,18 +353,15 @@ func TestClaudeParseNewLinesMultiTurn(t *testing.T) {
 		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"bash","input":{}}],"stop_reason":null},"uuid":"a1"}`,
 		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"All done."}],"stop_reason":null},"uuid":"a2"}`,
 	})
-	// user → working + title, tool_use → nothing, text → idle
-	if len(events) != 3 {
-		t.Fatalf("expected 3 events, got %d: %v", len(events), events)
+	// user → working, tool_use → nothing, text → idle
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events, got %d: %v", len(events), events)
 	}
 	if !events[0].Status.Working {
 		t.Error("first event should be working=true")
 	}
-	if events[1].Title != "Fix it" {
-		t.Errorf("second event should be title, got %v", events[1])
-	}
-	if events[2].Status.Working {
-		t.Error("third event should be working=false")
+	if events[1].Status.Working {
+		t.Error("second event should be working=false")
 	}
 }
 

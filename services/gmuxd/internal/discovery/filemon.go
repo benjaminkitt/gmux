@@ -365,6 +365,10 @@ func (fm *FileMonitor) handleFileChange(path string) {
 		if sessionID == "" {
 			return
 		}
+		// New attribution — parse the full file for initial title.
+		// This handles "name > first user message > (new)" correctly
+		// without requiring ParseNewLines to track message order.
+		fm.setTitleFromFile(sessionID, path)
 	}
 
 	// Track active file per session. When the active file changes
@@ -408,6 +412,30 @@ func (fm *FileMonitor) handleFileChange(path string) {
 			}
 		}
 	}
+	fm.store.Upsert(sess)
+}
+
+// setTitleFromFile parses the full session file and sets the adapter title
+// on the store entry. Called once on first attribution to derive the initial
+// title (name > first user message) without relying on ParseNewLines.
+func (fm *FileMonitor) setTitleFromFile(sessionID, filePath string) {
+	ms, ok := fm.sessions[sessionID]
+	if !ok {
+		return
+	}
+	filer, ok := ms.adapter.(adapter.SessionFiler)
+	if !ok {
+		return
+	}
+	info, err := filer.ParseSessionFile(filePath)
+	if err != nil || info.Title == "" {
+		return
+	}
+	sess, ok := fm.store.Get(sessionID)
+	if !ok {
+		return
+	}
+	sess.AdapterTitle = info.Title
 	fm.store.Upsert(sess)
 }
 
