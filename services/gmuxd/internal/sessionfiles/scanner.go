@@ -61,66 +61,71 @@ func (sc *Scanner) Scan() {
 			continue
 		}
 
-		// Enumerate per-cwd subdirectories under the session root.
-		subdirs, err := os.ReadDir(root)
-		if err != nil {
-			if !os.IsNotExist(err) {
-				log.Printf("sessionfiles: read root %s: %v", root, err)
+		// If the adapter provides its own file listing (e.g. for
+		// date-nested directories like Codex), use that. Otherwise
+		// enumerate per-cwd subdirectories under the session root.
+		var allFiles []string
+		if lister, ok := a.(adapter.SessionFileLister); ok {
+			allFiles = lister.ListSessionFiles()
+		} else {
+			subdirs, err := os.ReadDir(root)
+			if err != nil {
+				if !os.IsNotExist(err) {
+					log.Printf("sessionfiles: read root %s: %v", root, err)
+				}
+				continue
 			}
-			continue
+			for _, d := range subdirs {
+				if !d.IsDir() {
+					continue
+				}
+				dir := filepath.Join(root, d.Name())
+				allFiles = append(allFiles, adapters.ListSessionFiles(dir)...)
+			}
 		}
 
-		for _, d := range subdirs {
-			if !d.IsDir() {
+		for _, path := range allFiles {
+			info, err := sf.ParseSessionFile(path)
+			if err != nil {
 				continue
 			}
 
-			dir := filepath.Join(root, d.Name())
-			files := adapters.ListSessionFiles(dir)
-
-			for _, path := range files {
-				info, err := sf.ParseSessionFile(path)
-				if err != nil {
-					continue
-				}
-
-				if existing[info.ID] {
-					continue
-				}
-
-				if hasResume && !resumer.CanResume(path) {
-					continue
-				}
-
-				var cmd []string
-				if hasResume {
-					cmd = resumer.ResumeCommand(info)
-				}
-
-				// Use the cwd from the session file header, not from
-				// decoding the directory name (which is lossy for paths
-				// containing dashes).
-				cwd := info.Cwd
-				if cwd == "" {
-					continue
-				}
-
-				sess := store.Session{
-					ID:           "file-" + info.ID[:8],
-					CreatedAt:    info.Created.UTC().Format(time.RFC3339),
-					Command:      cmd,
-					Cwd:          cwd,
-					Kind:         a.Name(),
-					Alive:        false,
-					AdapterTitle: info.Title,
-					ResumeKey:    info.ID,
-					Resumable:    true,
-					Status:       nil,
-				}
-
-				sc.store.Upsert(sess)
-				existing[info.ID] = true
+			if existing[info.ID] {
+				continue
 			}
+
+			if hasResume && !resumer.CanResume(path) {
+				continue
+			}
+
+			var cmd []string
+			if hasResume {
+				cmd = resumer.ResumeCommand(info)
+			}
+
+			// Use the cwd from the session file header, not from
+			// decoding the directory name (which is lossy for paths
+			// containing dashes).
+			cwd := info.Cwd
+			if cwd == "" {
+				continue
+			}
+
+			sess := store.Session{
+				ID:           "file-" + info.ID[:8],
+				CreatedAt:    info.Created.UTC().Format(time.RFC3339),
+				Command:      cmd,
+				Cwd:          cwd,
+				Kind:         a.Name(),
+				Alive:        false,
+				AdapterTitle: info.Title,
+				ResumeKey:    info.ID,
+				Resumable:    true,
+				Status:       nil,
+			}
+
+			sc.store.Upsert(sess)
+			existing[info.ID] = true
 		}
 	}
 }

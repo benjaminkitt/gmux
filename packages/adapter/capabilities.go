@@ -53,6 +53,16 @@ type FileMonitor interface {
 	ParseNewLines(lines []string) []FileEvent
 }
 
+// SessionFileLister is an optional extension of SessionFiler for adapters
+// whose session files aren't organized as direct children of per-cwd
+// subdirectories. When implemented, the scanner uses ListSessionFiles
+// instead of the default one-level directory listing.
+type SessionFileLister interface {
+	// ListSessionFiles returns all session file paths under the root.
+	// Called instead of the default per-subdirectory listing.
+	ListSessionFiles() []string
+}
+
 // Resumer is implemented by adapters whose sessions can be resumed
 // after the process exits.
 type Resumer interface {

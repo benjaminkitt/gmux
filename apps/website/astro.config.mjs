@@ -39,6 +39,7 @@ export default defineConfig({
           label: 'Integrations',
           items: [
             { label: 'Claude Code', slug: 'integrations/claude-code' },
+            { label: 'Codex', slug: 'integrations/codex' },
             { label: 'pi', slug: 'integrations/pi' },
           ],
         },

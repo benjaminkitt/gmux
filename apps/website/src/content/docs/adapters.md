@@ -20,6 +20,7 @@ You don't configure adapters. gmux recognizes tools by their command name:
 
 ```bash
 gmux claude        # → claude adapter
+gmux codex         # → codex adapter
 gmux pi            # → pi adapter
 gmux bash          # → shell adapter (fallback)
 gmux make build    # → shell adapter (fallback)
@@ -42,6 +43,16 @@ Active when `claude` is installed. Provides:
 - Resumable sessions — exited sessions stay in the sidebar, click to resume via `claude --resume`
 
 See [Claude Code integration](/integrations/claude-code) for details.
+
+### Codex
+
+Active when `codex` is installed. Provides:
+
+- Live status detection (working while agent responds, idle on task completion)
+- Session titles from your first prompt (system context filtered out)
+- Resumable sessions — exited sessions stay in the sidebar, click to resume via `codex resume`
+
+See [Codex integration](/integrations/codex) for details.
 
 ### Pi
 
