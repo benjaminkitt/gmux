@@ -1296,7 +1296,7 @@ function App() {
     }
   }, [selected?.alive, selectedId])
 
-  const canAttach = !!selected?.alive && !USE_MOCK
+  const canAttach = !!selected?.alive && !!selected?.socket_path && !USE_MOCK
 
   useEffect(() => {
     if (!canAttach) {
@@ -1366,6 +1366,11 @@ function App() {
             onCtrlConsumed={handleCtrlConsumed}
             onInputReady={handleTerminalInputReady}
           />
+        ) : selected?.alive && !selected?.socket_path ? (
+          <div class="state-message">
+            <div class="state-icon">⋯</div>
+            <div class="state-title">Starting</div>
+          </div>
         ) : (
           <EmptyState launchers={launchers} health={health} />
         )}

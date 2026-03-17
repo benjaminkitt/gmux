@@ -449,6 +449,7 @@ func main() {
 			// Register() will merge in the live session data (socket, pid)
 			// when gmux calls POST /v1/register.
 			sess.Alive = true
+			sess.SocketPath = "" // clear stale socket — prevents discovery from marking us dead
 			sess.Status = &store.Status{Working: true}
 			sessions.Upsert(sess)
 
