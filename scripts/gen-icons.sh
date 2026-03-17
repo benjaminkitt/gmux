@@ -36,7 +36,7 @@ SVG
 cat > "$ROOT/apps/website/public/favicon.svg" << SVG
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <rect width="32" height="32" rx="$RADIUS" fill="$BG"/>
-  <rect x="3.5" y="3.5" width="25" height="25" rx="3.5" fill="none" stroke="$ACCENT" stroke-width="1.2" opacity="0.45"/>
+  <rect x="3.5" y="3.5" width="25" height="25" rx="3.5" fill="none" stroke="$ACCENT" stroke-width="1.5"/>
   <polyline points="$CHEV" fill="none" stroke="$ACCENT" stroke-width="$STROKE_W" stroke-linecap="round" stroke-linejoin="round"/>
   <line x1="$USCORE_X1" y1="$USCORE_Y" x2="$USCORE_X2" y2="$USCORE_Y" stroke="$ACCENT" stroke-width="$STROKE_W" stroke-linecap="round"/>
 </svg>
