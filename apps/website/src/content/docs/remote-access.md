@@ -54,12 +54,30 @@ Create or edit `~/.config/gmux/config.toml`:
 enabled = true
 ```
 
-That's it. Your own tailscale account is automatically whitelisted — gmuxd detects the node owner at startup. The hostname defaults to `gmuxd`, making it available at `https://gmux.your-tailnet.ts.net`.
+That's it. Your own tailscale account is automatically whitelisted — gmuxd detects the node owner at startup. The hostname defaults to `gmux`, making it available at `https://gmux.your-tailnet.ts.net`.
 
 | Field | Description |
 |---|---|
 | `enabled` | Start the tailscale listener. Default `false`. |
-| `hostname` | The machine name on your tailnet. Default `gmux`, giving you `gmux.your-tailnet.ts.net`. Change this if you run gmux on multiple machines. |
+| `hostname` | The machine name on your tailnet. Default `gmux`, giving you `gmux.your-tailnet.ts.net`. |
+
+:::note[Multiple machines]
+If you run gmux on more than one machine on the same tailnet, each needs a unique `hostname` — tailscale can't register two nodes with the same name. Pick something descriptive:
+
+```toml
+# Desktop
+[tailscale]
+enabled = true
+hostname = "gmux-desktop"
+
+# Laptop
+[tailscale]
+enabled = true
+hostname = "gmux-laptop"
+```
+
+This gives you `https://gmux-desktop.your-tailnet.ts.net` and `https://gmux-laptop.your-tailnet.ts.net`.
+:::
 
 ### 4. Restart gmuxd
 
