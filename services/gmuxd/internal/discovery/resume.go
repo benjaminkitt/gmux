@@ -25,8 +25,18 @@ func (pr *PendingResumes) Add(command []string, sessionID string) {
 	pr.pending[strings.Join(command, "\x00")] = sessionID
 }
 
+// Has checks if a command matches a pending resume without consuming it.
+// Used by discovery to avoid creating duplicate sessions for runners
+// that haven't called Register() yet.
+func (pr *PendingResumes) Has(command []string) bool {
+	pr.mu.Lock()
+	defer pr.mu.Unlock()
+	_, ok := pr.pending[strings.Join(command, "\x00")]
+	return ok
+}
+
 // Take checks if a newly registered session matches a pending resume.
-// Matches by exact command array.
+// Matches by exact command array. Consumes the entry.
 func (pr *PendingResumes) Take(command []string) (string, bool) {
 	pr.mu.Lock()
 	defer pr.mu.Unlock()

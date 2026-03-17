@@ -42,9 +42,9 @@ func markStale(sess *store.Session) {
 // Watch periodically scans for Unix sockets and queries their /meta.
 // When a new session is found, it subscribes to the runner's /events SSE
 // for real-time status/meta/exit updates.
-func Watch(sessions *store.Store, subs *Subscriptions, fileMon *FileMonitor, interval time.Duration, stop <-chan struct{}) {
+func Watch(sessions *store.Store, subs *Subscriptions, fileMon *FileMonitor, resumes *PendingResumes, interval time.Duration, stop <-chan struct{}) {
 	// Initial scan immediately
-	Scan(sessions, subs, fileMon)
+	Scan(sessions, subs, fileMon, resumes)
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -55,7 +55,7 @@ func Watch(sessions *store.Store, subs *Subscriptions, fileMon *FileMonitor, int
 			subs.UnsubscribeAll()
 			return
 		case <-ticker.C:
-			Scan(sessions, subs, fileMon)
+			Scan(sessions, subs, fileMon, resumes)
 		}
 	}
 }
@@ -63,7 +63,7 @@ func Watch(sessions *store.Store, subs *Subscriptions, fileMon *FileMonitor, int
 // Scan finds all .sock files and queries each runner's /meta endpoint.
 // Reachable sockets → upsert session + subscribe to /events.
 // Unreachable → remove + cleanup + unsubscribe.
-func Scan(sessions *store.Store, subs *Subscriptions, fileMon *FileMonitor) {
+func Scan(sessions *store.Store, subs *Subscriptions, fileMon *FileMonitor, resumes *PendingResumes) {
 	dir := socketDir()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -115,6 +115,14 @@ func Scan(sessions *store.Store, subs *Subscriptions, fileMon *FileMonitor) {
 		}
 
 		markStale(sess)
+
+		// Skip sessions whose command matches a pending resume.
+		// Register() will handle the merge when the runner calls in.
+		if resumes != nil && resumes.Has(sess.Command) {
+			seen[sess.ID] = true
+			continue
+		}
+
 		_, existed := sessions.Get(sess.ID)
 		seen[sess.ID] = true
 		sessions.Upsert(*sess)
@@ -181,6 +189,14 @@ func Register(sessions *store.Store, subs *Subscriptions, fileMon *FileMonitor, 
 				}
 				if fileMon != nil {
 					fileMon.NotifyNewSession(existingID)
+				}
+				// Clean up any duplicate the discovery Watch loop may have
+				// created between socket creation and this Register() call.
+				if newSess.ID != existingID {
+					sessions.Remove(newSess.ID)
+					if subs != nil {
+						subs.Unsubscribe(newSess.ID)
+					}
 				}
 				log.Printf("register: merged resumed session %s ← %s", existingID, newSess.ID)
 				return nil
