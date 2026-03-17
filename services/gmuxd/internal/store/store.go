@@ -59,9 +59,10 @@ type subscriber struct {
 }
 
 type Store struct {
-	mu          sync.RWMutex
-	sessions    map[string]Session
-	subscribers map[*subscriber]struct{}
+	mu              sync.RWMutex
+	sessions        map[string]Session
+	subscribers     map[*subscriber]struct{}
+	resumableKinds  map[string]bool
 }
 
 func New() *Store {
@@ -69,6 +70,12 @@ func New() *Store {
 		sessions:    make(map[string]Session),
 		subscribers: make(map[*subscriber]struct{}),
 	}
+}
+
+// SetResumableKinds configures which adapter kinds support resume.
+// Derived from the compiled adapter set at startup.
+func (s *Store) SetResumableKinds(kinds map[string]bool) {
+	s.resumableKinds = kinds
 }
 
 func (s *Store) List() []Session {
@@ -111,19 +118,22 @@ func resolveTitle(sess Session) string {
 	return sess.Title
 }
 
-// resumeCapableKind returns true for adapter kinds that support session resume.
-func resumeCapableKind(kind string) bool {
-	return kind != "" && kind != "shell" && kind != "generic"
+func (s *Store) isResumableKind(kind string) bool {
+	if s.resumableKinds == nil {
+		return false
+	}
+	return s.resumableKinds[kind]
 }
 
 func (s *Store) Upsert(sess Session) {
 	sess.Title = resolveTitle(sess)
+	resumable := s.isResumableKind(sess.Kind)
 	// Derive resumable: dead + resume-capable kind + has a resume command.
-	sess.Resumable = !sess.Alive && resumeCapableKind(sess.Kind) && len(sess.Command) > 0
+	sess.Resumable = !sess.Alive && resumable && len(sess.Command) > 0
 	// Derive close_action:
 	//   alive + resume-capable kind → minimize (−) — killing will yield a resumable session
 	//   everything else → dismiss (×) — remove from store
-	if sess.Alive && resumeCapableKind(sess.Kind) {
+	if sess.Alive && resumable {
 		sess.CloseAction = "minimize"
 	} else {
 		sess.CloseAction = "dismiss"

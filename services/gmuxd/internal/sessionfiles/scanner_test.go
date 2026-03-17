@@ -36,6 +36,12 @@ func writePiSession(t *testing.T, homeDir, cwd, sessID, userMsg string) string {
 	return path
 }
 
+func newTestStore() *store.Store {
+	s := store.New()
+	s.SetResumableKinds(map[string]bool{"pi": true, "claude": true, "codex": true})
+	return s
+}
+
 func TestScanDiscoversFromAllDirectories(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
@@ -45,7 +51,7 @@ func TestScanDiscoversFromAllDirectories(t *testing.T) {
 	writePiSession(t, tmpHome, "/tmp/project-b", "ffff-gggg-hhhh-iiii-jjjjjjjjjjjj", "add tests")
 
 	// Empty store — no live sessions. Scanner should still find everything.
-	s := store.New()
+	s := newTestStore()
 	sc := New(s)
 	sc.Scan()
 
@@ -77,7 +83,7 @@ func TestScanSkipsDuplicates(t *testing.T) {
 	sessID := "aaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 	writePiSession(t, tmpHome, "/tmp/project", sessID, "hello")
 
-	s := store.New()
+	s := newTestStore()
 	// Pre-existing alive session with same resume_key — should be skipped.
 	s.Upsert(store.Session{ID: "existing", Cwd: "/tmp/project", ResumeKey: sessID, Alive: true})
 
@@ -96,7 +102,7 @@ func TestScanUsesFileHeaderCwd(t *testing.T) {
 	// The cwd in the file header is the source of truth.
 	writePiSession(t, tmpHome, "/home/user/my-project", "aaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "hello")
 
-	s := store.New()
+	s := newTestStore()
 	sc := New(s)
 	sc.Scan()
 
@@ -116,15 +122,14 @@ func TestScanRefreshesDead(t *testing.T) {
 	sessID := "aaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 	writePiSession(t, tmpHome, "/tmp/project", sessID, "fix auth")
 
-	s := store.New()
+	s := newTestStore()
 	// Simulate a session that was resumed then exited: has resume_key,
-	// dead, not resumable. Scanner should refresh it back to resumable.
+	// dead, no command (so not resumable yet). Scanner should refresh it.
 	s.Upsert(store.Session{
 		ID:        "file-aaaa-bbb",
 		Cwd:       "/tmp/project",
 		ResumeKey: sessID,
 		Alive:     false,
-		Resumable: false,
 	})
 
 	sc := New(s)
@@ -148,7 +153,7 @@ func TestScanRefreshesDead(t *testing.T) {
 }
 
 func TestPurgeStaleSessions(t *testing.T) {
-	s := store.New()
+	s := newTestStore()
 
 	s.Upsert(store.Session{
 		ID:       "stale",

@@ -159,6 +159,16 @@ func main() {
 	launchConfig := discoverLaunchers()
 
 	sessions := store.New()
+
+	// Build resumable kinds from the compiled adapter set.
+	resumableKinds := make(map[string]bool)
+	for _, a := range adapters.All {
+		if _, ok := a.(adapter.Resumer); ok {
+			resumableKinds[a.Name()] = true
+		}
+	}
+	sessions.SetResumableKinds(resumableKinds)
+
 	subs := discovery.NewSubscriptions(sessions)
 	pendingResumes := discovery.NewPendingResumes()
 	var resumeMu sync.Mutex
