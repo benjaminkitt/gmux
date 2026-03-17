@@ -1,5 +1,42 @@
 # Changelog
 
+## v0.2.1
+
+### State management rearchitecture
+
+Rewrote how session state flows between the daemon and the web UI to eliminate a class of race conditions in the resume lifecycle.
+
+**Backend:** Register is now the single entry point for creating live sessions. Discovery delegates to it instead of having its own creation path. The resume handler no longer sets `alive=true` optimistically — the session stays resumable until the runner actually registers.
+
+**Frontend:** Zero optimistic updates. The session list is a pure projection of backend state, written only by SSE events. UI-only state (`selectedId`, `resumingId`) is kept separate from session state.
+
+### Bugfixes
+
+- **Resume races eliminated** — fixed duplicate sessions from discovery/register race, stale socket causing session to die again, and premature terminal attach to non-existent socket.
+- **Dismissed sessions stay dismissed** — dismissed resume keys are tracked so the periodic file scanner doesn't re-add them.
+- **Exit status no longer clobbers resume transition** — clean exits show no status label (the dead state is visible from the dot).
+- **Stale selection cleared** — selecting a session that dies or gets dismissed now correctly deselects. Auto-select only picks sessions with a valid socket.
+- **Discovery won't delete brand-new sockets** — sockets must be >10s old before cleanup, preventing deletion during runner startup.
+- **Cross-platform Chrome app-mode launch** — macOS no longer uses `open -a` (which silently drops `--args` when Chrome is running). Calls the binary inside the `.app` bundle directly.
+
+### UI
+
+- **Status labels are null by default** — only shown when informative (e.g. `exited (1)`). Removed redundant labels like "working", "starting", "completed".
+- **Kind label removed from sidebar** — "claude", "codex" etc. no longer shown as text next to sessions.
+- **Dead sessions not auto-selected on page load.**
+
+### Docs
+
+- **State Management** page — comprehensive documentation of session lifecycle, owner table, derived fields, and frontend architecture.
+- **Session Schema** added to sidebar navigation.
+- Updated session-schema, adapter-architecture, writing-adapters, using-the-ui, and remote-access docs.
+
+### Internal
+
+- `resumableKinds` derived from adapter set instead of hardcoded negative list.
+- `PendingResumes.Has()` removed (unused after Scan delegates to Register).
+- Auto-select consolidated to single effect.
+
 ## v0.2.0
 
 ### New adapters
