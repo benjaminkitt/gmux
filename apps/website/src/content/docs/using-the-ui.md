@@ -29,14 +29,16 @@ The working/idle detection comes from [adapters](/adapters). Without a specific 
 | Dimmed text | Exited (not resumable) | Dismiss with × |
 | Normal text, not alive | Resumable | Click to resume |
 
-### Close buttons
+### Close button
 
-Hover over a session to reveal the close button:
+Hover over a session to reveal the **×** button:
 
-- **×** (dismiss) — kills the process and removes it from the sidebar
-- **−** (minimize) — kills the process and transitions it to a resumable entry. Click it again to resume where you left off.
+- **Live sessions** — kills the process. If the adapter supports resume and a session file was attributed, the session moves to the "Resume previous" drawer.
+- **Resumable sessions** — dismisses the entry (it can still be found in the drawer until gmuxd restarts).
 
-Which button appears depends on the adapter. Plain shell sessions get ×, sessions from resumable adapters (Claude Code, Codex, pi) get −.
+### Resuming sessions
+
+Below the live sessions, a **"Resume previous"** button expands to show resumable sessions from previous runs. Click one to resume — the drawer collapses and the session appears as a live entry.
 
 ## The terminal
 

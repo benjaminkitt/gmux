@@ -83,7 +83,7 @@ Runs every 30 seconds. Enumerates adapter session files on disk (e.g. `~/.claude
 
 - **alive → dead:** Subscription receives exit event from the runner, or discovery finds the socket gone.
 - **dead → resumable:** If the session has a `resume_key` (file was attributed) and the adapter implements `Resumer`, the exit handler derives the resume command. The session transitions directly — no intermediate "exited" limbo state.
-- **dead → removed:** Non-resumable sessions show a × button. Clicking it calls dismiss, which removes from the store.
+- **dead → removed:** Non-resumable dead sessions are not shown in the sidebar. Resumable sessions in the "Resume previous" drawer can be dismissed with ×.
 - **resumable → alive:** User clicks the session. The resume handler launches a runner with the resume command but does **not** modify the store. When the runner registers, `Register()` merges it back to alive.
 - **removed (with file):** Dismissed resume keys are tracked in memory so the scanner doesn't re-add them. Restarting `gmuxd` clears this set — a fresh start shows all available sessions.
 
@@ -93,13 +93,13 @@ These are computed in `Upsert()`, never set manually:
 
 | Field | Derivation |
 |---|---|
-| `title` | `adapter_title` > `shell_title` > command basename (see below) |
+| `title` | `adapter_title` > `shell_title` > `CommandTitler` > adapter kind (see below) |
 | `resumable` | `!alive && resume-capable kind && has resume_key && has command` |
 | `close_action` | `"minimize"` if alive + resume-capable kind + has resume_key, else `"dismiss"` |
 
 A session is only resume-capable if its adapter implements the `Resumer` interface. The set of resume-capable kinds is built from the compiled adapter set at startup.
 
-**Title priority:** `adapter_title` always wins over `shell_title`. An empty `adapter_title` from the runner never overwrites a non-empty one on the daemon — this preserves titles across resume, where the daemon knows the title from file attribution but the freshly-started runner doesn't yet.
+**Title priority:** `adapter_title` always wins over `shell_title`. An empty `adapter_title` from the runner never overwrites a non-empty one on the daemon — this preserves titles across resume, where the daemon knows the title from file attribution but the freshly-started runner doesn't yet. The next fallback is the adapter's `CommandTitler` interface (shell uses this to show `pytest -x`). The final fallback is the adapter kind name (e.g. "codex").
 
 `resume_key` is set during file attribution — not at session creation. A session from a resumable adapter that exits before creating a file (e.g. opened and immediately closed) gets `close_action: "dismiss"` and is not resumable.
 

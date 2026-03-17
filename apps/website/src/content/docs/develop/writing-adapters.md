@@ -208,11 +208,23 @@ Implement this if your tool supports resuming previous sessions.
 
 A session only becomes resumable once a file is attributed to it (setting `resume_key`). Sessions that exit before creating a file are treated as non-resumable — the original launch command would start a fresh session, not resume the old one.
 
+### `CommandTitler`
+
+```go
+type CommandTitler interface {
+    CommandTitle(command []string) string
+}
+```
+
+Implement this if your adapter needs custom fallback title display from the command array. Without it, the fallback title is the adapter name (e.g. "codex", "pi"). Shell implements this to show the full command with args (e.g. "pytest -x").
+
+This only matters when no `adapter_title` or `shell_title` is set — which is rare for adapters that implement `FileMonitor` (titles come from file parsing) but common for plain shell sessions.
+
 ### Capability composition
 
 An adapter implements only what it needs:
 
-| Adapter | Base (`Discover`/`Match`/`Env`/`Monitor`) | Launchable | SessionFiler | FileMonitor | FileAttributor | Resumer |
+| Adapter | Base | Launchable | SessionFiler | FileMonitor | FileAttributor | Resumer |
 |---------|------|------------|-------------|-------------|----------------|---------|
 | Shell | ✓ | ✓ | — | — | — | — |
 | Claude | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
