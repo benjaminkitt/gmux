@@ -60,8 +60,9 @@ export default defineConfig({
           ],
         },
       ],
-      // Disable default homepage — we use a custom one
-      components: {},
+      components: {
+        Head: './src/components/Head.astro',
+      },
     }),
   ],
 });
