@@ -166,11 +166,13 @@ func main() {
 	// to extract title and working status from JSONL files.
 	fileMon := discovery.NewFileMonitor(sessions)
 
-	// When a session exits, immediately transition it to resumable if
-	// the adapter supports it. This avoids the "exited" limbo state —
-	// the session becomes clickable to resume right away.
+	// When a session exits, derive the resume command so it transitions
+	// to resumable immediately — no "exited" limbo state.
 	subs.OnExit = func(sess *store.Session) {
-		fileMon.ResolveResume(sess)
+		if cmd := fileMon.ResolveResumeCommand(sess); cmd != nil {
+			sess.Command = cmd
+			sess.Status = nil // clear exit status for clean resumable display
+		}
 	}
 	stopFileMon := make(chan struct{})
 	go fileMon.Run(stopFileMon)
@@ -407,7 +409,7 @@ func main() {
 				writeError(w, http.StatusNotFound, "not_found", "session not found")
 				return
 			}
-			if !sess.Resumable || len(sess.Command) == 0 {
+			if sess.Alive || len(sess.Command) == 0 {
 				writeError(w, http.StatusBadRequest, "not_resumable", "session is not resumable")
 				return
 			}
@@ -430,7 +432,6 @@ func main() {
 			// Register() will merge in the live session data (socket, pid)
 			// when gmux calls POST /v1/register.
 			sess.Alive = true
-			sess.Resumable = false
 			sess.Status = &store.Status{Label: "starting", Working: true}
 			sessions.Upsert(sess)
 

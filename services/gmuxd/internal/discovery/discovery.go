@@ -162,7 +162,6 @@ func Register(sessions *store.Store, subs *Subscriptions, fileMon *FileMonitor, 
 				// Merge: keep the existing entry's ID and resume_key,
 				// update with live session data.
 				existing.Alive = true
-				existing.Resumable = false
 				existing.SocketPath = socketPath
 				existing.Pid = newSess.Pid
 				existing.StartedAt = newSess.StartedAt

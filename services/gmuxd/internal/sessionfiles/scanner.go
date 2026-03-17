@@ -120,8 +120,7 @@ func (sc *Scanner) Scan() {
 				Alive:        false,
 				AdapterTitle: info.Title,
 				ResumeKey:    info.ID,
-				Resumable:    true,
-				Status:       nil,
+				// Resumable is derived by Upsert from !Alive + Kind + Command.
 			}
 
 			sc.store.Upsert(sess)

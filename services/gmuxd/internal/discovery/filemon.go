@@ -222,48 +222,36 @@ func (fm *FileMonitor) NotifyNewSession(sessionID string) {
 	}
 }
 
-// ResolveResume checks if a session has an attributed file and a resumable
-// adapter. If so, it populates the session's Resumable, ResumeKey, and
-// Command fields so the session transitions to resumable immediately on exit.
-func (fm *FileMonitor) ResolveResume(sess *store.Session) {
-	fm.mu.Lock()
-	defer fm.mu.Unlock()
-
-	// Find the attributed file for this session.
-	var filePath string
-	for path, sid := range fm.attributions {
-		if sid == sess.ID {
-			filePath = path
-			break
-		}
+// ResolveResumeCommand derives the resume command for a session that just
+// exited, using its ResumeKey (set during file attribution) and the
+// adapter's Resumer interface. Returns nil if the session isn't resumable.
+func (fm *FileMonitor) ResolveResumeCommand(sess *store.Session) []string {
+	if sess.ResumeKey == "" {
+		return nil
 	}
-	if filePath == "" {
-		return
-	}
-
 	a := findAdapter(sess.Kind)
 	if a == nil {
-		return
-	}
-
-	sf, ok := a.(adapter.SessionFiler)
-	if !ok {
-		return
+		return nil
 	}
 	resumer, ok := a.(adapter.Resumer)
 	if !ok {
-		return
+		return nil
 	}
 
-	info, err := sf.ParseSessionFile(filePath)
-	if err != nil || !resumer.CanResume(filePath) {
-		return
-	}
+	// Build SessionFileInfo from what we know. Most adapters only need
+	// the ID; Pi also needs FilePath.
+	info := &adapter.SessionFileInfo{ID: sess.ResumeKey}
 
-	sess.Resumable = true
-	sess.ResumeKey = info.ID
-	sess.Command = resumer.ResumeCommand(info)
-	sess.Status = nil // clear exit status for clean resumable display
+	fm.mu.Lock()
+	for path, sid := range fm.attributions {
+		if sid == sess.ID {
+			info.FilePath = path
+			break
+		}
+	}
+	fm.mu.Unlock()
+
+	return resumer.ResumeCommand(info)
 }
 
 // NotifySessionDied removes a session from monitoring.
@@ -330,6 +318,17 @@ func (fm *FileMonitor) handleFileChange(path string) {
 		sessionID = fm.attributeFileLocked(dir, path)
 		if sessionID == "" {
 			return
+		}
+
+		// First attribution: set ResumeKey on the live session so it
+		// can transition to resumable seamlessly when it exits.
+		if ms, ok := fm.sessions[sessionID]; ok {
+			if info, err := ms.filer.ParseSessionFile(path); err == nil && info.ID != "" {
+				if sess, ok := fm.store.Get(sessionID); ok && sess.ResumeKey == "" {
+					sess.ResumeKey = info.ID
+					fm.store.Upsert(sess)
+				}
+			}
 		}
 	}
 

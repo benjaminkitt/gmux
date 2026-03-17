@@ -111,12 +111,19 @@ func resolveTitle(sess Session) string {
 	return sess.Title
 }
 
+// resumeCapableKind returns true for adapter kinds that support session resume.
+func resumeCapableKind(kind string) bool {
+	return kind != "" && kind != "shell" && kind != "generic"
+}
+
 func (s *Store) Upsert(sess Session) {
 	sess.Title = resolveTitle(sess)
+	// Derive resumable: dead + resume-capable kind + has a resume command.
+	sess.Resumable = !sess.Alive && resumeCapableKind(sess.Kind) && len(sess.Command) > 0
 	// Derive close_action:
 	//   alive + resume-capable kind → minimize (−) — killing will yield a resumable session
 	//   everything else → dismiss (×) — remove from store
-	if sess.Alive && sess.Kind != "" && sess.Kind != "shell" && sess.Kind != "generic" {
+	if sess.Alive && resumeCapableKind(sess.Kind) {
 		sess.CloseAction = "minimize"
 	} else {
 		sess.CloseAction = "dismiss"

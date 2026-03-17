@@ -211,7 +211,7 @@ func (sub *Subscriptions) handleEvent(sessionID, socketPath, eventType string, d
 		} else {
 			sess.Status = &store.Status{Label: fmt.Sprintf("exited (%d)", exit.ExitCode)}
 		}
-		// Let the OnExit hook transition resumable sessions before upsert.
+		// Let the OnExit hook set the resume command before upsert.
 		if sub.OnExit != nil {
 			sub.OnExit(&sess)
 		}
