@@ -35,7 +35,7 @@ Configuration lives in `~/.config/gmux/config.toml`. See [Security](/security) a
 
 ### Web UI
 
-The frontend is built with Preact and xterm.js, compiled into a static bundle, and embedded into the `gmuxd` binary via `go:embed`. No separate web server or Node.js runtime is needed.
+The frontend is built with Preact and xterm.js, compiled into a static bundle, and embedded into the `gmuxd` binary via `go:embed`. No separate web server or Node.js runtime is needed. It renders session state as a pure projection of the backend — see [State Management](/develop/state-management) for the data flow details.
 
 ## Data flow
 

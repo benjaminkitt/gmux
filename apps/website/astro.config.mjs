@@ -46,6 +46,8 @@ export default defineConfig({
         {
           label: 'Develop',
           items: [
+            { label: 'State Management', slug: 'develop/state-management' },
+            { label: 'Session Schema', slug: 'develop/session-schema' },
             { label: 'Adapter Architecture', slug: 'develop/adapter-architecture' },
             { label: 'Writing an Adapter', slug: 'develop/writing-adapters' },
           ],

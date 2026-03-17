@@ -3,7 +3,7 @@ title: Session Schema
 description: The session metadata model shared between gmux, gmuxd, and the web UI.
 ---
 
-> Application-agnostic session metadata. Informed by research into Codex, Claude Code Desktop, T3 Code, and cmux sidebar APIs.
+> Application-agnostic session metadata. Informed by research into Codex, Claude Code Desktop, T3 Code, and cmux sidebar APIs. For how this state flows between components, see [State Management](/develop/state-management).
 
 ## Design Principles
 
