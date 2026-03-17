@@ -389,14 +389,28 @@ func (fm *FileMonitor) handleFileChange(path string) {
 	}
 
 	events := ms.fileMon.ParseNewLines(lines)
-	if len(events) == 0 {
-		return
-	}
 
 	sess, ok := fm.store.Get(sessionID)
 	if !ok {
 		return
 	}
+
+	// If adapter title is still unset (file was attributed before any user
+	// messages), re-derive it from the full file. This catches the common
+	// case where the tool creates the file on launch but only writes user
+	// messages later.
+	if sess.AdapterTitle == "" || sess.AdapterTitle == "(new)" {
+		fm.setTitleFromFile(sessionID, path)
+		// Re-read session after potential title update.
+		if s, ok := fm.store.Get(sessionID); ok {
+			sess = s
+		}
+	}
+
+	if len(events) == 0 {
+		return
+	}
+
 	for _, evt := range events {
 		if evt.Title != "" {
 			sess.AdapterTitle = evt.Title
@@ -487,9 +501,6 @@ func (fm *FileMonitor) attributeFileLocked(dir, filePath string) string {
 	}
 
 	// Delegate to the adapter's FileAttributor if available.
-	// Even single-candidate cases go through the adapter to validate
-	// that the file actually belongs to this session (e.g. checking
-	// cwd + timestamp proximity prevents attributing old files).
 	attr, hasAttr := candidates[0].adapter.(adapter.FileAttributor)
 	if hasAttr {
 		fileCandidates := make([]adapter.FileCandidate, len(candidates))
@@ -501,13 +512,15 @@ func (fm *FileMonitor) attributeFileLocked(dir, filePath string) string {
 			if sess, ok := fm.store.Get(ms.id); ok {
 				fc.StartedAt, _ = time.Parse(time.RFC3339, sess.StartedAt)
 			}
-			if len(candidates) > 1 {
-				fc.Scrollback = fetchScrollbackText(ms.socketPath)
-			}
+			// Always fetch scrollback — needed for single-candidate
+			// attribution too (pi uses scrollback similarity to avoid
+			// matching old files from previous sessions in the same dir).
+			fc.Scrollback = fetchScrollbackText(ms.socketPath)
 			fileCandidates[i] = fc
 		}
 		if id := attr.AttributeFile(filePath, fileCandidates); id != "" {
 			fm.attributions[filePath] = id
+			log.Printf("filemon: attributed %s → %s", filepath.Base(filePath), id)
 			return id
 		}
 		return "" // adapter rejected the file

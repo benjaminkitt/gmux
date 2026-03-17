@@ -84,5 +84,5 @@ gmux watches pi's PTY output for its braille spinner characters (⠋⠙⠹⠸⠼
 ## Limitations
 
 - **Status is spinner-only for now.** gmux doesn't yet distinguish between "thinking", "writing code", or "waiting for tool approval". It reports "working" for any active spinner.
-- **File creation is delayed.** Pi doesn't write a session file until the first assistant response. A brand-new session with no response yet won't have a title or resume key.
+- **Title appears after the first turn.** Pi creates the session file on launch but doesn't write conversation content until the first assistant response completes. The title (derived from your first message) appears once that write happens.
 - **Multi-instance attribution needs content matching.** If you run two pi sessions in the same directory, gmux uses content similarity to attribute files. This works well in practice but has a one-write delay for initial attribution.

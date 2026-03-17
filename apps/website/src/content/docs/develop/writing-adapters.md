@@ -239,14 +239,11 @@ If the adapter implements `Launchable`, test the returned launcher IDs, labels, 
 
 For adapters with `SessionFiler`, create temp files in your tool's format and verify `ParseSessionFile()` extracts the expected metadata.
 
-Integration tests that launch real processes use the `//go:build integration` tag:
-
-```bash
-go test -tags integration -v -timeout 120s ./packages/adapter/adapters/
-```
+For the full end-to-end pipeline (launch → file attribution → title → resume), add integration tests that run real processes through gmuxd. See [Integration Tests](/develop/integration-tests) for the harness, patterns, and gotchas.
 
 ## Related docs
 
 - [Adapters](/adapters) — user-facing overview
 - [Adapter Architecture](/develop/adapter-architecture) — runtime model
+- [Integration Tests](/develop/integration-tests) — end-to-end testing with real tools
 - [pi](/integrations/pi) — concrete built-in example

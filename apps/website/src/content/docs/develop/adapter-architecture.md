@@ -193,9 +193,10 @@ This is what lets gmux connect a running session to a later-created conversation
 After attribution, `gmuxd` can continue watching the file:
 
 1. read newly appended lines
-2. pass them to `ParseNewLines()`
-3. apply returned `FileEvent`s to the live session
-4. publish the updates to the frontend via SSE
+2. if the session still has no adapter title (common when the tool creates the file before the first user message), re-derive the title from `ParseSessionFile()` on the full file
+3. pass new lines to `ParseNewLines()`
+4. apply returned `FileEvent`s to the live session
+5. publish the updates to the frontend via SSE
 
 That is how file-backed tools can update titles or other metadata in real time even when those changes never appear in terminal output.
 

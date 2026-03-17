@@ -50,6 +50,7 @@ export default defineConfig({
             { label: 'Session Schema', slug: 'develop/session-schema' },
             { label: 'Adapter Architecture', slug: 'develop/adapter-architecture' },
             { label: 'Writing an Adapter', slug: 'develop/writing-adapters' },
+            { label: 'Integration Tests', slug: 'develop/integration-tests' },
           ],
         },
         {

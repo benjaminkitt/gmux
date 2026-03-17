@@ -9,7 +9,7 @@ Session state flows one way: runners and file monitors produce it, `gmuxd` aggre
 
 `gmuxd` holds all sessions in an in-memory store. Every mutation goes through `store.Upsert(session)`, which:
 
-1. Derives computed fields (`title`, `resumable`, `close_action`)
+1. Derives computed fields (`title`, `resumable`)
 2. Writes the session under a lock
 3. Broadcasts a `session-upsert` SSE event to all connected browsers
 
@@ -50,7 +50,8 @@ Watches adapter session directories with inotify. When a `.jsonl` file is writte
 
 1. Attributes the file to a live session via the adapter's `FileAttributor` interface (pi uses scrollback similarity; claude and codex use cwd + timestamp proximity)
 2. Tracks the **active file** per session — when a different file is attributed (e.g. `/new` or `/resume` in the tool's TUI), the `resume_key` updates to the new file's session ID
-3. Feeds new lines to the adapter's `ParseNewLines()` for title and status updates
+3. On first attribution, derives the initial title from `ParseSessionFile()`. If the title is still empty on subsequent writes (common when the tool creates the file before the first user message), re-derives it.
+4. Feeds new lines to the adapter's `ParseNewLines()` for title and status updates
 
 ### Scanner: file-discovered sessions
 
@@ -100,7 +101,7 @@ A session is only resume-capable if its adapter implements the `Resumer` interfa
 
 **Title priority:** `adapter_title` always wins over `shell_title`. An empty `adapter_title` from the runner never overwrites a non-empty one on the daemon — this preserves titles across resume, where the daemon knows the title from file attribution but the freshly-started runner doesn't yet. The next fallback is the adapter's `CommandTitler` interface (shell uses this to show `pytest -x`). The final fallback is the adapter kind name (e.g. "codex").
 
-`resume_key` is set during file attribution — not at session creation. A session from a resumable adapter that exits before creating a file (e.g. opened and immediately closed) gets `close_action: "dismiss"` and is not resumable.
+`resume_key` is set during file attribution — not at session creation. A session from a resumable adapter that exits before creating a file (e.g. opened and immediately closed) is not resumable.
 
 ## Frontend architecture
 
