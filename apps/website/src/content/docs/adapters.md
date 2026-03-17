@@ -41,6 +41,8 @@ Active when `claude` is installed. Provides:
 - Session titles from conversation files or Claude's auto-generated titles
 - Resumable sessions — exited sessions stay in the sidebar, click to resume via `claude --resume`
 
+See [Claude Code integration](/integrations/claude-code) for details.
+
 ### Pi
 
 Active when `pi` is installed. Provides:
