@@ -190,6 +190,8 @@ Implement this if your tool supports resuming previous sessions.
 - `CanResume()` filters out invalid or empty files
 - `ResumeCommand()` tells gmux how to resume a valid session
 
+A session only becomes resumable once a file is attributed to it (setting `resume_key`). Sessions that exit before creating a file are treated as non-resumable — the original launch command would start a fresh session, not resume the old one.
+
 ### Capability composition
 
 An adapter implements only what it needs:
