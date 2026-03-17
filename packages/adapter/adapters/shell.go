@@ -3,7 +3,11 @@
 // page "Writing an Adapter".
 package adapters
 
-import "github.com/gmuxapp/gmux/packages/adapter"
+import (
+	"strings"
+
+	"github.com/gmuxapp/gmux/packages/adapter"
+)
 
 // All contains instances of all non-fallback adapters, registered via init().
 var All []adapter.Adapter
@@ -53,6 +57,18 @@ func (g *Shell) Discover() bool        { return true }
 func (g *Shell) Match(_ []string) bool { return true }
 
 func (g *Shell) Env(_ adapter.EnvContext) []string { return nil }
+
+// CommandTitle shows the full command with args (e.g. "pytest -x").
+func (g *Shell) CommandTitle(command []string) string {
+	if len(command) == 0 {
+		return "shell"
+	}
+	base := adapter.BaseName(command[0])
+	if len(command) > 1 {
+		return base + " " + strings.Join(command[1:], " ")
+	}
+	return base
+}
 
 func (g *Shell) Launchers() []adapter.Launcher {
 	return []adapter.Launcher{{

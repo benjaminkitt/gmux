@@ -169,6 +169,16 @@ func main() {
 	}
 	sessions.SetResumableKinds(resumableKinds)
 
+	// Build command titlers from adapters that implement CommandTitler.
+	commandTitlers := make(map[string]func([]string) string)
+	for _, a := range adapters.All {
+		if ct, ok := a.(adapter.CommandTitler); ok {
+			ct := ct // capture for closure
+			commandTitlers[a.Name()] = ct.CommandTitle
+		}
+	}
+	sessions.SetCommandTitlers(commandTitlers)
+
 	subs := discovery.NewSubscriptions(sessions)
 	pendingResumes := discovery.NewPendingResumes()
 	var resumeMu sync.Mutex
@@ -466,10 +476,24 @@ func main() {
 				return
 			}
 			// Send kill to runner — it will SIGTERM the child, which triggers
-			// normal exit lifecycle (exit event → subscription updates store)
+			// normal exit lifecycle (exit event → subscription updates store).
+			// If the runner is unreachable, force-mark dead (stale session).
 			if sess.SocketPath != "" && sess.Alive {
 				if err := discovery.KillSession(sess.SocketPath); err != nil {
-					log.Printf("kill: %s: runner kill failed: %v", sessionID, err)
+					log.Printf("kill: %s: runner unreachable, forcing dead: %v", sessionID, err)
+					sess.Alive = false
+					sess.Status = nil
+					if fileMon != nil {
+						if cmd := fileMon.ResolveResumeCommand(&sess); cmd != nil {
+							sess.Command = cmd
+						}
+					}
+					sessions.Upsert(sess)
+					subs.Unsubscribe(sessionID)
+					if fileMon != nil {
+						fileMon.NotifySessionDied(sessionID)
+					}
+					os.Remove(sess.SocketPath)
 				}
 			}
 			writeJSON(w, map[string]any{"ok": true, "data": map[string]any{}})

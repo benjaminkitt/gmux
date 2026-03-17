@@ -100,14 +100,19 @@ func Scan(sessions *store.Store, subs *Subscriptions, fileMon *FileMonitor, resu
 		}
 	}
 
-	// Phase 2: detect dead sessions (socket file gone).
+	// Phase 2: detect dead sessions (socket file gone or unresponsive).
 	for _, s := range sessions.List() {
 		if !s.Alive || s.SocketPath == "" {
 			continue
 		}
-		if _, err := os.Stat(s.SocketPath); err == nil {
-			continue // socket still exists
+		if _, err := os.Stat(s.SocketPath); err != nil {
+			// Socket file is gone — definitely dead.
+		} else if subs.IsActive(s.ID) {
+			continue // socket exists and subscription is live — healthy
+		} else if probeSocket(s.SocketPath) {
+			continue // socket exists and responds — subscription will reconnect
 		}
+		// Socket gone or unresponsive — mark dead.
 		s.Alive = false
 		s.Status = nil
 		if fileMon != nil {
@@ -123,6 +128,18 @@ func Scan(sessions *store.Store, subs *Subscriptions, fileMon *FileMonitor, resu
 			fileMon.NotifySessionDied(s.ID)
 		}
 	}
+}
+
+// probeSocket checks if a Unix socket is still accepting connections.
+// Used to distinguish stale socket files from live runners whose
+// subscription dropped momentarily.
+func probeSocket(socketPath string) bool {
+	conn, err := net.DialTimeout("unix", socketPath, 500*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
 }
 
 // Register handles a registration request from gmux-run.

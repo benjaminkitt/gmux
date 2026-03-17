@@ -85,6 +85,16 @@ type FileAttributor interface {
 	AttributeFile(filePath string, candidates []FileCandidate) string
 }
 
+// CommandTitler is optionally implemented by adapters that want to
+// control how a command array is displayed as a fallback title.
+// Without it, the store joins the full command (e.g. "pytest -x").
+// Adapters that use resume commands should implement this to avoid
+// titles like "codex resume 019cfb54-...".
+type CommandTitler interface {
+	// CommandTitle returns a display title for the given command.
+	CommandTitle(command []string) string
+}
+
 // Resumer is implemented by adapters whose sessions can be resumed
 // after the process exits.
 type Resumer interface {

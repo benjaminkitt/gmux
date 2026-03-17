@@ -15,10 +15,10 @@ func TestListEmpty(t *testing.T) {
 func TestUpsertAndGet(t *testing.T) {
 	s := New()
 	s.Upsert(Session{
-		ID:    "s1",
-		Kind:  "pi",
-		Alive: true,
-		Title: "test",
+		ID:           "s1",
+		Kind:         "pi",
+		Alive:        true,
+		AdapterTitle: "test",
 	})
 
 	got, ok := s.Get("s1")
@@ -35,8 +35,8 @@ func TestUpsertAndGet(t *testing.T) {
 
 func TestUpsertOverwrite(t *testing.T) {
 	s := New()
-	s.Upsert(Session{ID: "s1", Kind: "pi", Title: "v1"})
-	s.Upsert(Session{ID: "s1", Kind: "pi", Title: "v2"})
+	s.Upsert(Session{ID: "s1", Kind: "pi", AdapterTitle: "v1"})
+	s.Upsert(Session{ID: "s1", Kind: "pi", AdapterTitle: "v2"})
 
 	got, _ := s.Get("s1")
 	if got.Title != "v2" {

@@ -330,8 +330,6 @@ function SessionItem({
   onClose?: () => void
 }) {
   const dotState = resuming ? 'working' : sessionDotState(session)
-  const closeAction = session.close_action
-  const showKind = false
 
   return (
     <div
@@ -348,18 +346,15 @@ function SessionItem({
           {session.status?.label && (
             <span class="session-status-label">{session.status.label}</span>
           )}
-          {showKind && (
-            <span>{session.kind}</span>
-          )}
         </div>
       </div>
-      {onClose && closeAction && (
+      {onClose && (
         <button
-          class={`session-close-btn ${closeAction}`}
+          class="session-close-btn"
           onClick={(e) => { e.stopPropagation(); onClose() }}
-          title={closeAction === 'minimize' ? 'Suspend session' : 'Remove session'}
+          title={session.alive ? 'Kill session' : 'Dismiss'}
         >
-          {closeAction === 'minimize' ? '−' : '×'}
+          ×
         </button>
       )}
     </div>
@@ -373,7 +368,6 @@ function FolderGroup({
   onSelect,
   onCloseSession,
   onHideFolder,
-  isSessionVisible,
 }: {
   folder: Folder
   selectedId: string | null
@@ -381,16 +375,16 @@ function FolderGroup({
   onSelect: (id: string) => void
   onCloseSession: (session: Session) => void
   onHideFolder: (cwd: string) => void
-  isSessionVisible: (session: Session) => boolean
 }) {
-  const [showMore, setShowMore] = useState(false)
+  const [showResumable, setShowResumable] = useState(false)
 
-  // Split sessions into visible and collapsed ("show more")
-  const visible: Session[] = []
-  const collapsed: Session[] = []
+  // Split sessions: live (top section) vs resumable (bottom drawer)
+  const live: Session[] = []
+  const resumable: Session[] = []
   for (const s of folder.sessions) {
-    if (isSessionVisible(s)) visible.push(s)
-    else collapsed.push(s)
+    if (s.alive) live.push(s)
+    else if (s.resumable) resumable.push(s)
+    // Non-resumable dead sessions are not shown
   }
 
   return (
@@ -400,26 +394,25 @@ function FolderGroup({
         <LaunchButton cwd={folder.path} className="folder-launch-btn" />
       </div>
       <div class="folder-sessions">
-        {visible.map(s => (
+        {live.map(s => (
           <SessionItem
             key={s.id}
             session={s}
             selected={selectedId === s.id}
-            resuming={resumingId === s.id}
             onClick={() => onSelect(s.id)}
             onClose={() => onCloseSession(s)}
           />
         ))}
         <div class="folder-actions">
-          {collapsed.length > 0 && (
+          {resumable.length > 0 && (
             <button
               class="folder-action-btn"
-              onClick={() => setShowMore(v => !v)}
+              onClick={() => setShowResumable(v => !v)}
             >
-              {showMore ? 'Show less' : `Show ${collapsed.length} more`}
+              {showResumable ? 'Hide previous' : `Resume previous (${resumable.length})`}
             </button>
           )}
-          {collapsed.length > 0 && (
+          {resumable.length > 0 && (
             <span class="folder-action-sep">·</span>
           )}
           <button
@@ -429,13 +422,13 @@ function FolderGroup({
             Hide
           </button>
         </div>
-        {showMore && collapsed.map(s => (
+        {showResumable && resumable.map(s => (
           <SessionItem
             key={s.id}
             session={s}
-            selected={selectedId === s.id}
+            selected={false}
             resuming={resumingId === s.id}
-            onClick={() => onSelect(s.id)}
+            onClick={() => { setShowResumable(false); onSelect(s.id) }}
             onClose={() => onCloseSession(s)}
           />
         ))}
@@ -453,7 +446,6 @@ function Sidebar({
   onCloseSession,
   onHideFolder,
   onShowFolder,
-  isSessionVisible,
   open,
   onClose,
 }: {
@@ -465,7 +457,6 @@ function Sidebar({
   onCloseSession: (session: Session) => void
   onHideFolder: (cwd: string) => void
   onShowFolder: (cwd: string) => void
-  isSessionVisible: (session: Session) => boolean
   open: boolean
   onClose: () => void
 }) {
@@ -493,7 +484,6 @@ function Sidebar({
               }}
               onCloseSession={onCloseSession}
               onHideFolder={onHideFolder}
-              isSessionVisible={isSessionVisible}
             />
           ))}
         </div>
@@ -1250,11 +1240,10 @@ function App() {
   const [resumingId, setResumingId] = useState<string | null>(null)
 
   const handleCloseSession = useCallback((session: Session) => {
-    if (session.close_action === 'minimize') {
+    if (session.alive) {
       killSession(session.id)
     } else {
       dismissSession(session.id)
-      // No optimistic removal — SSE session-remove will update the list.
     }
   }, [])
 
@@ -1334,7 +1323,6 @@ function App() {
         onCloseSession={handleCloseSession}
         onHideFolder={handleHideFolder}
         onShowFolder={(cwd) => sidebarState.showFolder(cwd)}
-        isSessionVisible={(s) => sidebarState.isSessionVisible(s)}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
       />

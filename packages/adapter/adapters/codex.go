@@ -284,6 +284,7 @@ func (c *Codex) ResumeCommand(info *adapter.SessionFileInfo) []string {
 	return []string{"codex", "resume", info.ID}
 }
 
+
 // CanResume checks if a session file has user messages worth resuming.
 func (c *Codex) CanResume(path string) bool {
 	info, err := c.ParseSessionFile(path)

@@ -51,6 +51,14 @@ func (sub *Subscriptions) Subscribe(sessionID, socketPath string) {
 	go sub.runSubscription(ctx, sessionID, socketPath)
 }
 
+// IsActive returns true if a subscription is currently running for the session.
+func (sub *Subscriptions) IsActive(sessionID string) bool {
+	sub.mu.Lock()
+	_, ok := sub.active[sessionID]
+	sub.mu.Unlock()
+	return ok
+}
+
 // Unsubscribe cancels and removes the subscription for a session.
 func (sub *Subscriptions) Unsubscribe(sessionID string) {
 	sub.mu.Lock()

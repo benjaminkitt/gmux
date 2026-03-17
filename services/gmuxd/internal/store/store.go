@@ -1,8 +1,6 @@
 package store
 
 import (
-	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 )
@@ -63,6 +61,7 @@ type Store struct {
 	sessions        map[string]Session
 	subscribers     map[*subscriber]struct{}
 	resumableKinds  map[string]bool
+	commandTitlers  map[string]func([]string) string
 	dismissed       map[string]bool // dismissed ResumeKeys — prevents scanner re-adding
 }
 
@@ -78,6 +77,13 @@ func New() *Store {
 // Derived from the compiled adapter set at startup.
 func (s *Store) SetResumableKinds(kinds map[string]bool) {
 	s.resumableKinds = kinds
+}
+
+// SetCommandTitlers configures per-kind functions that derive a display
+// title from a command array. Used as the fallback when no adapter_title
+// or shell_title is set (e.g. "codex" instead of "codex resume <id>").
+func (s *Store) SetCommandTitlers(titlers map[string]func([]string) string) {
+	s.commandTitlers = titlers
 }
 
 // IsDismissed returns true if a resume key was previously dismissed by the user.
@@ -105,24 +111,21 @@ func (s *Store) Get(id string) (Session, bool) {
 	return sess, ok
 }
 
-// resolveTitle picks the best title: adapter > shell > command basename.
-func resolveTitle(sess Session) string {
+// resolveTitle picks the best title: adapter > shell > command fallback.
+func (s *Store) resolveTitle(sess Session) string {
 	if sess.AdapterTitle != "" {
 		return sess.AdapterTitle
 	}
 	if sess.ShellTitle != "" {
 		return sess.ShellTitle
 	}
-	// Fall back to command basename (same logic the runner uses).
-	if len(sess.Command) > 0 {
-		base := filepath.Base(sess.Command[0])
-		if len(sess.Command) > 1 {
-			parts := make([]string, len(sess.Command))
-			parts[0] = base
-			copy(parts[1:], sess.Command[1:])
-			return strings.Join(parts, " ")
-		}
-		return base
+	// Ask the adapter for a command title if it implements CommandTitler.
+	if fn := s.commandTitlers[sess.Kind]; fn != nil && len(sess.Command) > 0 {
+		return fn(sess.Command)
+	}
+	// Default: use the adapter kind as the title (e.g. "codex", "claude").
+	if sess.Kind != "" {
+		return sess.Kind
 	}
 	return sess.Title
 }
@@ -135,7 +138,7 @@ func (s *Store) isResumableKind(kind string) bool {
 }
 
 func (s *Store) Upsert(sess Session) {
-	sess.Title = resolveTitle(sess)
+	sess.Title = s.resolveTitle(sess)
 	resumeKind := s.isResumableKind(sess.Kind)
 	// A session is resumable only if it has an attributed file (ResumeKey).
 	// Without a file, there's nothing to resume — the original command
