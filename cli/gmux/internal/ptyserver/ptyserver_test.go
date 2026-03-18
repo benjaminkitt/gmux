@@ -113,16 +113,37 @@ func TestPTYServerResize(t *testing.T) {
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")
 
-	// Send resize message
-	msg := ResizeMsg{Type: "resize", Cols: 120, Rows: 40}
+	msg := ResizeMsg{Type: "resize", Seq: 42, Cols: 120, Rows: 40}
 	data, _ := json.Marshal(msg)
-	err = conn.Write(ctx, websocket.MessageText, data)
-	if err != nil {
+	if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
 		t.Fatalf("write resize: %v", err)
 	}
 
-	// If we get here without crashing, resize was handled
-	<-srv.Done()
+	for i := 0; i < 5; i++ {
+		typ, data, err := conn.Read(ctx)
+		if err != nil {
+			t.Fatalf("read resize ack: %v", err)
+		}
+		if typ != websocket.MessageText {
+			continue
+		}
+
+		var ack map[string]any
+		if err := json.Unmarshal(data, &ack); err != nil {
+			continue
+		}
+		if ack["type"] == "resize_applied" {
+			if ack["seq"] != float64(42) {
+				t.Fatalf("expected resize seq 42, got %v", ack["seq"])
+			}
+			if ack["cols"] != float64(120) || ack["rows"] != float64(40) {
+				t.Fatalf("unexpected resize ack payload: %v", ack)
+			}
+			return
+		}
+	}
+
+	t.Fatal("expected resize_applied ack")
 }
 
 func TestPTYServerInput(t *testing.T) {

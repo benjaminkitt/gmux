@@ -29,6 +29,7 @@ const defaultScrollbackSize = 128 * 1024 // 128KB
 // ResizeMsg is the JSON message clients send to resize the terminal.
 type ResizeMsg struct {
 	Type        string `json:"type"`
+	Seq         uint64 `json:"seq,omitempty"`
 	Cols        uint16 `json:"cols"`
 	Rows        uint16 `json:"rows"`
 	PixelWidth  uint16 `json:"pixelWidth,omitempty"`
@@ -58,6 +59,13 @@ type wsClient struct {
 	ctx      context.Context
 	cancel   context.CancelFunc
 	readonly bool
+	writeMu  sync.Mutex
+}
+
+func (c *wsClient) write(typ websocket.MessageType, data []byte) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	return c.conn.Write(c.ctx, typ, data)
 }
 
 // Config for creating a new PTY server.
@@ -189,7 +197,7 @@ func (s *Server) WritePTY(p []byte) (int, error) {
 
 // Resize changes the PTY window size and signals the child.
 func (s *Server) Resize(cols, rows uint16) {
-	s.resize(cols, rows, 0, 0)
+	s.resize(ResizeMsg{Cols: cols, Rows: rows})
 }
 
 // Shutdown closes the listener and all connections.
@@ -362,7 +370,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		frame = append(frame, resetSeq...)
 		frame = append(frame, snapshot...)
 		frame = append(frame, esu...)
-		if err := conn.Write(ctx, websocket.MessageBinary, frame); err != nil {
+		if err := client.write(websocket.MessageBinary, frame); err != nil {
 			s.mu.Lock()
 			delete(s.clients, client)
 			s.mu.Unlock()
@@ -391,7 +399,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		if typ == websocket.MessageText {
 			var msg ResizeMsg
 			if json.Unmarshal(data, &msg) == nil && msg.Type == "resize" {
-				s.resize(msg.Cols, msg.Rows, msg.PixelWidth, msg.PixelHeight)
+				s.resize(msg)
 				continue
 			}
 		}
@@ -403,20 +411,47 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) resize(cols, rows, pixelWidth, pixelHeight uint16) {
-	if cols == 0 || rows == 0 {
+func (s *Server) resize(msg ResizeMsg) {
+	if msg.Cols == 0 || msg.Rows == 0 {
 		return
 	}
 	pty.Setsize(s.ptmx, &pty.Winsize{
-		Cols: cols,
-		Rows: rows,
-		X:    pixelWidth,
-		Y:    pixelHeight,
+		Cols: msg.Cols,
+		Rows: msg.Rows,
+		X:    msg.PixelWidth,
+		Y:    msg.PixelHeight,
 	})
 
-	// Send SIGWINCH to the child process group
+	// Send SIGWINCH to the child process group.
 	if s.cmd.Process != nil {
 		syscall.Kill(-s.cmd.Process.Pid, syscall.SIGWINCH)
+	}
+
+	if msg.Seq == 0 {
+		return
+	}
+
+	payload, err := json.Marshal(map[string]any{
+		"type": "resize_applied",
+		"seq":  msg.Seq,
+		"cols": msg.Cols,
+		"rows": msg.Rows,
+	})
+	if err != nil {
+		return
+	}
+
+	s.mu.Lock()
+	clients := make([]*wsClient, 0, len(s.clients))
+	for c := range s.clients {
+		clients = append(clients, c)
+	}
+	s.mu.Unlock()
+
+	for _, c := range clients {
+		if err := c.write(websocket.MessageText, payload); err != nil {
+			c.cancel()
+		}
 	}
 }
 
@@ -465,7 +500,7 @@ func (s *Server) readPTY() {
 			}
 
 			for _, c := range clients {
-				if err := c.conn.Write(c.ctx, websocket.MessageBinary, data); err != nil {
+				if err := c.write(websocket.MessageBinary, data); err != nil {
 					c.cancel()
 				}
 			}

@@ -1,0 +1,99 @@
+export interface TerminalWriter {
+  write(data: string | Uint8Array, callback?: () => void): void
+  resize(cols: number, rows: number): void
+}
+
+export interface TerminalSize {
+  cols: number
+  rows: number
+}
+
+interface QueueItem {
+  epoch: number
+  data: Uint8Array
+  onWritten?: () => void
+}
+
+export interface TerminalIO {
+  reset(epoch: number): void
+  enqueue(data: Uint8Array, epoch: number, onWritten?: () => void): void
+  enqueueMany(chunks: Uint8Array[], epoch: number, onWritten?: () => void): void
+  requestResize(size: TerminalSize, epoch: number): void
+  hasPendingWork(): boolean
+}
+
+/**
+ * Serializes xterm writes and resizes so resize only happens when the parser
+ * is idle. This avoids xterm async-parser races (eg image addon + resize).
+ */
+export function createTerminalIO(term: TerminalWriter): TerminalIO {
+  let currentEpoch = 0
+  let queue: QueueItem[] = []
+  let writeInFlight = false
+  let pendingResize: (TerminalSize & { epoch: number }) | null = null
+
+  const dropStaleFront = () => {
+    while (queue.length && queue[0].epoch !== currentEpoch) {
+      queue.shift()
+    }
+    if (pendingResize && pendingResize.epoch !== currentEpoch) {
+      pendingResize = null
+    }
+  }
+
+  const pump = () => {
+    if (writeInFlight) return
+    dropStaleFront()
+
+    const next = queue.shift()
+    if (next) {
+      writeInFlight = true
+      term.write(next.data, () => {
+        writeInFlight = false
+        if (next.epoch === currentEpoch) next.onWritten?.()
+        pump()
+      })
+      return
+    }
+
+    if (pendingResize && pendingResize.epoch === currentEpoch) {
+      const { cols, rows } = pendingResize
+      pendingResize = null
+      term.resize(cols, rows)
+    }
+  }
+
+  return {
+    reset(epoch: number) {
+      currentEpoch = epoch
+      queue = []
+      writeInFlight = false
+      pendingResize = null
+    },
+
+    enqueue(data: Uint8Array, epoch: number, onWritten?: () => void) {
+      if (epoch !== currentEpoch) return
+      queue.push({ epoch, data, onWritten })
+      pump()
+    },
+
+    enqueueMany(chunks: Uint8Array[], epoch: number, onWritten?: () => void) {
+      if (epoch !== currentEpoch || chunks.length === 0) return
+      for (let i = 0; i < chunks.length; i++) {
+        queue.push({ epoch, data: chunks[i], onWritten: i === chunks.length - 1 ? onWritten : undefined })
+      }
+      pump()
+    },
+
+    requestResize(size: TerminalSize, epoch: number) {
+      if (epoch !== currentEpoch) return
+      pendingResize = { ...size, epoch }
+      pump()
+    },
+
+    hasPendingWork() {
+      dropStaleFront()
+      return writeInFlight || queue.length > 0 || (!!pendingResize && pendingResize.epoch === currentEpoch)
+    },
+  }
+}

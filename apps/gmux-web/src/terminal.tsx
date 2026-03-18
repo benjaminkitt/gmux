@@ -5,6 +5,7 @@ import { ImageAddon } from '@xterm/addon-image'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { attachKeyboardHandler } from './keyboard'
 import { createReplayBuffer } from './replay'
+import { createTerminalIO, type TerminalSize } from './terminal-io'
 import { MOCK_BY_ID } from './mock-data/index'
 import type { Session } from './types'
 
@@ -46,11 +47,6 @@ export const TERM_THEME = {
 
 // ── Utilities ──
 
-export interface TerminalSize {
-  cols: number
-  rows: number
-}
-
 export function getProposedTerminalSize(fit: FitAddon | null): TerminalSize | null {
   if (!fit) return null
   const dims = fit.proposeDimensions()
@@ -58,17 +54,16 @@ export function getProposedTerminalSize(fit: FitAddon | null): TerminalSize | nu
   return { cols: dims.cols, rows: dims.rows }
 }
 
-function sendResize(ws: WebSocket | null, fit: FitAddon | null, term: Terminal | null): TerminalSize | null {
-  const dims = getProposedTerminalSize(fit)
-  if (!dims || !term || !ws || ws.readyState !== WebSocket.OPEN) return null
-  const msg: Record<string, unknown> = { type: 'resize', cols: dims.cols, rows: dims.rows }
+function sendResize(ws: WebSocket | null, term: Terminal | null, dims: TerminalSize, seq: number): boolean {
+  if (!term || !ws || ws.readyState !== WebSocket.OPEN) return false
+  const msg: Record<string, unknown> = { type: 'resize', seq, cols: dims.cols, rows: dims.rows }
   const el = term.element
   if (el) {
     msg.pixelWidth = el.clientWidth
     msg.pixelHeight = el.clientHeight
   }
   ws.send(JSON.stringify(msg))
-  return dims
+  return true
 }
 
 function ctrlSequenceFor(data: string): string | null {
@@ -97,6 +92,48 @@ function ctrlSequenceFor(data: string): string | null {
     default:
       return null
   }
+}
+
+function focusTerminalInput(term: Terminal | null): void {
+  if (!term) return
+
+  term.focus()
+
+  const textarea = term.textarea
+  if (!textarea) return
+
+  const isTouchDevice = window.matchMedia('(pointer: coarse)').matches
+    || navigator.maxTouchPoints > 0
+  if (!isTouchDevice) return
+
+  const prev = {
+    position: textarea.style.position,
+    left: textarea.style.left,
+    top: textarea.style.top,
+    width: textarea.style.width,
+    height: textarea.style.height,
+    opacity: textarea.style.opacity,
+    zIndex: textarea.style.zIndex,
+  }
+
+  textarea.style.position = 'fixed'
+  textarea.style.left = '12px'
+  textarea.style.top = '12px'
+  textarea.style.width = '1px'
+  textarea.style.height = '1px'
+  textarea.style.opacity = '0.01'
+  textarea.style.zIndex = '1000'
+  textarea.focus({ preventScroll: true })
+
+  requestAnimationFrame(() => {
+    textarea.style.position = prev.position
+    textarea.style.left = prev.left
+    textarea.style.top = prev.top
+    textarea.style.width = prev.width
+    textarea.style.height = prev.height
+    textarea.style.opacity = prev.opacity
+    textarea.style.zIndex = prev.zIndex
+  })
 }
 
 // ── TerminalView ──
@@ -135,6 +172,10 @@ export function TerminalView({
   const currentSessionRef = useRef(session)
   const ctrlArmedRef = useRef(ctrlArmed)
   const isResizeOwnerRef = useRef(false)
+  const termIoRef = useRef<ReturnType<typeof createTerminalIO> | null>(null)
+  const termEpochRef = useRef(0)
+  const resizeSeqCounterRef = useRef(0)
+  const lastAppliedResizeSeqRef = useRef(0)
   const [termLoading, setTermLoading] = useState(true)
   const [viewportSize, setViewportSize] = useState<TerminalSize | null>(null)
   const [isResizeOwner, setIsResizeOwner] = useState(false)
@@ -146,32 +187,48 @@ export function TerminalView({
   // Keep ref in sync with state for use inside callbacks.
   isResizeOwnerRef.current = isResizeOwner
 
-  const applyPassiveTerminalSize = useCallback(() => {
-    const term = termRef.current
-    const fit = fitRef.current
-    const current = currentSessionRef.current
-    if (!term || !fit) return
-
-    const proposed = getProposedTerminalSize(fit)
-    setViewportSize(proposed)
-
-    if (current.terminal_cols && current.terminal_rows) {
-      term.resize(current.terminal_cols, current.terminal_rows)
-    }
+  const nextResizeSeq = useCallback(() => {
+    resizeSeqCounterRef.current += 1
+    return Date.now() * 1000 + resizeSeqCounterRef.current
   }, [])
 
-  // Fit terminal to container and send resize to runner via WS.
-  // Only effective when we're the resize owner (proxy will drop otherwise).
+  const queueResize = useCallback((size: TerminalSize) => {
+    termIoRef.current?.requestResize(size, termEpochRef.current)
+  }, [])
+
+  const queueData = useCallback((data: Uint8Array, onWritten?: () => void) => {
+    termIoRef.current?.enqueue(data, termEpochRef.current, onWritten)
+  }, [])
+
+  const queueMany = useCallback((chunks: Uint8Array[], onWritten?: () => void) => {
+    termIoRef.current?.enqueueMany(chunks, termEpochRef.current, onWritten)
+  }, [])
+
+  const applyPassiveTerminalSize = useCallback(() => {
+    const fit = fitRef.current
+    const current = currentSessionRef.current
+    if (!fit) return
+
+    setViewportSize(getProposedTerminalSize(fit))
+    if (current.terminal_cols && current.terminal_rows) {
+      queueResize({ cols: current.terminal_cols, rows: current.terminal_rows })
+    }
+  }, [queueResize])
+
+  // Ask the backend PTY to resize, then wait for resize_applied before
+  // mutating xterm locally. This keeps output and resize ordered.
   const fitAndResize = useCallback(() => {
     const term = termRef.current
     const fit = fitRef.current
     const ws = wsRef.current
     if (!term || !fit) return
 
-    fit.fit()
-    const dims = sendResize(ws, fit, term)
-    setViewportSize(dims ?? getProposedTerminalSize(fit))
-  }, [])
+    const dims = getProposedTerminalSize(fit)
+    setViewportSize(dims)
+    if (!dims) return
+
+    sendResize(ws, term, dims, nextResizeSeq())
+  }, [nextResizeSeq])
 
   // Send claim_resize over WS to take resize ownership from another device.
   // The proxy confirms via resize_state; once ownership flips we fit+resize.
@@ -183,7 +240,7 @@ export function TerminalView({
   }, [])
 
   const focusTerminal = useCallback(() => {
-    termRef.current?.focus()
+    focusTerminalInput(termRef.current)
   }, [])
 
   const handleShellClick = useCallback((ev: MouseEvent) => {
@@ -214,6 +271,7 @@ export function TerminalView({
     setViewportSize(getProposedTerminalSize(fitAddon))
     termRef.current = term
     fitRef.current = fitAddon
+    termIoRef.current = createTerminalIO(term)
     ;(window as any).__gmuxTerm = term
 
     const sendRawInput = (data: string) => {
@@ -342,24 +400,18 @@ export function TerminalView({
 
     const onWindowResize = () => {
       if (!isResizeOwnerRef.current) {
-        // Not the owner — adopt the owner's size from SSE.
+        // Not the owner — keep showing the local viewport proposal, but render
+        // at the PTY size announced by the owner.
         const current = currentSessionRef.current
         const fit = fitRef.current
         if (fit) setViewportSize(getProposedTerminalSize(fit))
-        if (current.terminal_cols && current.terminal_rows && termRef.current) {
-          termRef.current.resize(current.terminal_cols, current.terminal_rows)
+        if (current.terminal_cols && current.terminal_rows) {
+          queueResize({ cols: current.terminal_cols, rows: current.terminal_rows })
         }
         return
       }
-      // Owner — fit to our container and send resize.
-      const t = termRef.current
-      const f = fitRef.current
-      const ws = wsRef.current
-      if (t && f) {
-        f.fit()
-        sendResize(ws, f, t)
-        setViewportSize(getProposedTerminalSize(f))
-      }
+
+      fitAndResize()
     }
     window.addEventListener('resize', onWindowResize)
 
@@ -381,31 +433,36 @@ export function TerminalView({
       term.dispose()
       termRef.current = null
       fitRef.current = null
+      termIoRef.current = null
     }
   }, [onCtrlConsumed, onInputReady])
 
-  // React to terminal_cols/terminal_rows changes from SSE when not the owner.
+  // Keep passive terminals in sync with the PTY size announced by the owner.
   useEffect(() => {
-    if (!termRef.current || USE_MOCK) return
-    if (!isResizeOwner) {
-      applyPassiveTerminalSize()
-      return
-    }
+    if (!termRef.current || USE_MOCK || isResizeOwner) return
+    applyPassiveTerminalSize()
+  }, [session.id, session.terminal_cols, session.terminal_rows, isResizeOwner, applyPassiveTerminalSize])
 
+  // When we become the owner (or switch sessions), request a fit-driven resize.
+  useEffect(() => {
+    if (!termRef.current || USE_MOCK || !isResizeOwner) return
     const frame = requestAnimationFrame(() => {
       if (!isResizeOwnerRef.current) return
       fitAndResize()
     })
     return () => cancelAnimationFrame(frame)
-  }, [session.id, session.terminal_cols, session.terminal_rows, isResizeOwner, applyPassiveTerminalSize, fitAndResize])
+  }, [session.id, isResizeOwner, fitAndResize])
 
   // WebSocket connection (reconnects when session.id changes).
   useEffect(() => {
-    if (!termRef.current || USE_MOCK) return
+    if (!termRef.current || USE_MOCK || !termIoRef.current) return
 
-    const term = termRef.current
     let attempt = 0
     let intentionalClose = false
+    const epoch = termEpochRef.current + 1
+    termEpochRef.current = epoch
+    termIoRef.current.reset(epoch)
+    lastAppliedResizeSeqRef.current = 0
 
     setTermLoading(true)
 
@@ -418,14 +475,9 @@ export function TerminalView({
       }
 
       const replay = createReplayBuffer((chunks) => {
-        for (const chunk of chunks) term.write(chunk)
-
-        // Hide loading only if replay had real scrollback content.
-        // Empty replay = BSU(8) + reset(14) + ESU(8) = 30bytes.
-        // Anything ≤48 is just the wrapper with no meaningful content.
-        const totalBytes = chunks.reduce((n, c) => n + c.length, 0);
-        if (totalBytes > 48) setTermLoading(false);
-      });
+        const totalBytes = chunks.reduce((n, c) => n + c.length, 0)
+        queueMany(chunks, totalBytes > 48 ? () => setTermLoading(false) : undefined)
+      })
 
       const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
       const ws = new WebSocket(`${wsProtocol}//${location.host}/ws/${session.id}`)
@@ -434,12 +486,9 @@ export function TerminalView({
 
       ws.onopen = () => {
         attempt = 0
-        // The proxy will send us a resize_state message telling us if
-        // we're the owner. We'll fit/resize in response to that.
       }
 
       ws.onmessage = (ev) => {
-        // Text messages may be JSON control messages from the proxy.
         if (typeof ev.data === 'string') {
           try {
             const msg = JSON.parse(ev.data)
@@ -447,27 +496,35 @@ export function TerminalView({
               const nowOwner = !!msg.is_owner
               isResizeOwnerRef.current = nowOwner
               setIsResizeOwner(nowOwner)
-              if (!nowOwner) {
-                // Not the owner — resize xterm to match the PTY immediately
-                // using the dimensions included in the control message.
-                const t = termRef.current
-                const cols = msg.cols as number | undefined
-                const rows = msg.rows as number | undefined
-                if (t && cols && rows) {
-                  t.resize(cols, rows)
-                }
+
+              const cols = msg.cols as number | undefined
+              const rows = msg.rows as number | undefined
+              if (!nowOwner && cols && rows) {
+                queueResize({ cols, rows })
               }
               return
             }
-          } catch { /* not JSON — fall through to terminal write */ }
-          // Non-control text message — write to terminal.
+
+            if (msg.type === 'resize_applied') {
+              const cols = msg.cols as number | undefined
+              const rows = msg.rows as number | undefined
+              const seq = Number(msg.seq ?? 0)
+              if (cols && rows && seq > lastAppliedResizeSeqRef.current) {
+                lastAppliedResizeSeqRef.current = seq
+                queueResize({ cols, rows })
+              }
+              return
+            }
+          } catch {
+            // fall through to terminal write
+          }
+
           const data = new TextEncoder().encode(ev.data)
           if (replay.state !== 'done') {
             replay.push(data)
             return
           }
-          setTermLoading(false)
-          term.write(data)
+          queueData(data, () => setTermLoading(false))
           return
         }
 
@@ -480,8 +537,7 @@ export function TerminalView({
           return
         }
 
-        setTermLoading(false)
-        term.write(data)
+        queueData(data, () => setTermLoading(false))
       }
 
       ws.onclose = () => {
@@ -501,12 +557,14 @@ export function TerminalView({
 
     return () => {
       intentionalClose = true
+      termEpochRef.current = epoch + 1
+      termIoRef.current?.reset(termEpochRef.current)
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
       reconnectTimer.current = null
       wsRef.current?.close()
       wsRef.current = null
     }
-  }, [session.id, applyPassiveTerminalSize])
+  }, [queueData, queueMany, queueResize, session.id])
 
   const showResizeOverlay = session.alive && !isResizeOwner
     && !!session.terminal_cols && !!session.terminal_rows

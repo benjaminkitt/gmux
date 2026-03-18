@@ -118,11 +118,11 @@ func (p *Proxy) Handler() http.HandlerFunc {
 		var wg sync.WaitGroup
 		wg.Add(2)
 
-		// Backend → Client (PTY output): pass through unchanged.
+		// Backend → Client (PTY output + resize acks).
 		go func() {
 			defer wg.Done()
 			defer proxyCancel()
-			proxyMessages(proxyCtx, backendConn, clientConn)
+			p.proxyBackendToClient(proxyCtx, c, backendConn, clientConn)
 		}()
 
 		// Client → Backend (keyboard input + resize): intercept control messages.
@@ -169,6 +169,7 @@ func (p *Proxy) proxyClientToBackend(ctx context.Context, c *conn, client, backe
 // controlMsg is the minimal shape we peek at from client JSON messages.
 type controlMsg struct {
 	Type string `json:"type"`
+	Seq  uint64 `json:"seq,omitempty"`
 	Cols uint16 `json:"cols"`
 	Rows uint16 `json:"rows"`
 }
@@ -192,14 +193,11 @@ func (p *Proxy) handleControlMessage(ctx context.Context, c *conn, data []byte, 
 			return true // drop — only the owner can resize
 		}
 
-		// Forward to backend runner.
+		// Forward to backend runner. The runner will broadcast resize_applied
+		// after the PTY resize has been processed; we update shared size state
+		// when that ack comes back.
 		if err := backend.Write(ctx, websocket.MessageText, data); err != nil {
 			return true
-		}
-
-		// Update store with new terminal size → broadcasts via SSE.
-		if msg.Cols > 0 && msg.Rows > 0 {
-			p.sizer.SetTerminalSize(c.sessionID, msg.Cols, msg.Rows)
 		}
 		return true
 
@@ -331,13 +329,24 @@ func (p *Proxy) sendResizeState(ctx context.Context, c *conn) {
 	_ = c.ws.Write(ctx, websocket.MessageText, msg)
 }
 
-// proxyMessages copies messages from src to dst until error or context cancel.
-func proxyMessages(ctx context.Context, src, dst *websocket.Conn) {
+// proxyBackendToClient forwards backend messages to the browser and updates
+// shared terminal-size state on resize_applied acknowledgements.
+func (p *Proxy) proxyBackendToClient(ctx context.Context, c *conn, src, dst *websocket.Conn) {
 	for {
 		typ, data, err := src.Read(ctx)
 		if err != nil {
 			return
 		}
+
+		if typ == websocket.MessageText {
+			var msg controlMsg
+			if err := json.Unmarshal(data, &msg); err == nil && msg.Type == "resize_applied" {
+				if msg.Cols > 0 && msg.Rows > 0 {
+					p.sizer.SetTerminalSize(c.sessionID, msg.Cols, msg.Rows)
+				}
+			}
+		}
+
 		if err := dst.Write(ctx, typ, data); err != nil {
 			return
 		}
