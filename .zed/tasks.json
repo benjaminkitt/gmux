@@ -1,0 +1,23 @@
+[
+  {
+    "label": "dev: start",
+    "command": "./scripts/dev.sh",
+    "allow_concurrent_runs": false
+  },
+  {
+    "label": "build: release",
+    "command": "./scripts/build.sh",
+    "allow_concurrent_runs": false
+  },
+  {
+    "label": "test: all",
+    "command": "pnpm test && cd cli/gmux && go test ./... && cd ../../services/gmuxd && go test ./... && cd ../../packages/adapter && go test ./...",
+    "allow_concurrent_runs": false,
+    "show_command": false
+  },
+  {
+    "label": "test: current Go package",
+    "command": "cd $ZED_DIRNAME && go test ./...",
+    "allow_concurrent_runs": false
+  }
+]
