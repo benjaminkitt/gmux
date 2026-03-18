@@ -79,3 +79,6 @@ homebrew_casks:
             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/gmux"]
             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/gmuxd"]
           end
+          # Shut down any running daemon so the next `gmux` invocation starts
+          # the newly installed version. Sessions stay alive.
+          system_command "#{staged_path}/gmuxd", args: ["shutdown"]
