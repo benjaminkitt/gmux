@@ -3,7 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { ImageAddon } from '@xterm/addon-image'
 import { WebglAddon } from '@xterm/addon-webgl'
-import { attachKeyboardHandler } from './keyboard'
+import { attachKeyboardHandler, attachPasteHandler } from './keyboard'
 import { createReplayBuffer } from './replay'
 import { createTerminalIO, type TerminalSize } from './terminal-io'
 import { MOCK_BY_ID } from './mock-data/index'
@@ -223,10 +223,10 @@ export function TerminalView({
   const termIoRef = useRef<ReturnType<typeof createTerminalIO> | null>(null)
   const termEpochRef = useRef(0)
 
-  // "Driving" means this client is actively controlling the PTY size.
-  // Starts false — browsers always connect passive. Set true when the user
-  // clicks the pill or explicitly triggers a resize. Set false when a
-  // terminal_resize arrives from another source.
+  // "Driving" tracks whether this client is actively resizing the PTY.
+  // Used only by onViewportResize to decide whether to re-fit on keyboard
+  // open/close (driving) or keep xterm pinned to the PTY size (passive).
+  // The pill does NOT read this — it is derived purely from ptySize vs viewportSize.
   const isDrivingRef = useRef(false)
 
   const [termLoading, setTermLoading] = useState(true)
@@ -264,6 +264,10 @@ export function TerminalView({
     setViewportSize(dims)
     if (!dims) return
 
+    // Optimistically sync ptySize so the pill hides immediately, before the
+    // server echoes the resize back. Without this, ptySize would lag behind
+    // viewportSize for one round-trip, causing a spurious pill flash.
+    setPtySize(dims)
     isDrivingRef.current = true
     queueResize(dims)
     announceResize(ws, dims)
@@ -338,6 +342,7 @@ export function TerminalView({
 
     const dataDisposable = term.onData((data) => sendInput(data))
     attachKeyboardHandler(term, sendInput)
+    const disposePasteHandler = attachPasteHandler(term, containerRef.current!, sendRawInput)
 
     const scrollDisposable = term.onScroll(() => {
       const buf = term.buffer.active
@@ -502,6 +507,7 @@ export function TerminalView({
       shell?.removeEventListener('touchmove', handleTouchMoveCapture, true)
       shell?.removeEventListener('touchend', handleTouchEndCapture, true)
       shell?.removeEventListener('touchcancel', clearTouchPan, true)
+      disposePasteHandler()
       dataDisposable.dispose()
       scrollDisposable.dispose()
       setScrolledUp(false)
@@ -542,6 +548,9 @@ export function TerminalView({
 
     // Always start passive on new connection.
     isDrivingRef.current = false
+    // Reset ptySize so a stale value from a previous session can't trigger a
+    // spurious pill while the loading overlay is visible (before ws.onopen).
+    setPtySize(null)
 
     setTermLoading(true)
 
@@ -606,10 +615,15 @@ export function TerminalView({
                 setPtySize(size)
                 queueResize(size)
 
-                // If the resize came from someone else, stop driving.
-                if (isDrivingRef.current && msg.source && msg.source !== 'web_client') {
-                  isDrivingRef.current = false
-                }
+                // Any server-confirmed resize means we're no longer the active
+                // driver. We don't use msg.source to discriminate — 'web_client'
+                // is shared across all browser tabs, so we can't tell whether a
+                // resize came from us or another tab. Stopping driving is always
+                // safe: if we sent this resize ourselves, ptySize already equals
+                // viewportSize (set optimistically in fitAndResize / ws.onopen),
+                // so the pill stays hidden. If another client resized to a
+                // different size, ptySize !== viewportSize and the pill appears.
+                isDrivingRef.current = false
               }
               return
             }
@@ -664,10 +678,11 @@ export function TerminalView({
     }
   }, [queueData, queueMany, queueResize, session.id])
 
-  // Pill is derived: viewport size differs from PTY size, and we're not
-  // already driving (if driving, the mismatch is transient — our resize
-  // is in flight and ptySize will catch up next frame).
-  const showResizePill = session.alive && !isDrivingRef.current
+  // Pill is purely derived from size mismatch. No driving guard needed:
+  // fitAndResize and ws.onopen both set ptySize = viewportSize optimistically,
+  // so the pill self-clears the moment we start a resize — before the server
+  // echoes it back.
+  const showResizePill = session.alive
     && ptySize != null && viewportSize != null
     && (viewportSize.cols !== ptySize.cols || viewportSize.rows !== ptySize.rows)
 
