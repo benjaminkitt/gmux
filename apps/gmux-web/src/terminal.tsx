@@ -564,7 +564,20 @@ export function TerminalView({
 
       const replay = createReplayBuffer((chunks) => {
         const totalBytes = chunks.reduce((n, c) => n + c.length, 0)
-        queueMany(chunks, totalBytes > 48 ? () => setTermLoading(false) : undefined)
+        queueMany(chunks, () => {
+          // After replay completes, scroll to bottom and clear the loading overlay.
+          //
+          // Why scrollToBottom() is required:
+          // The replay frame contains \x1b[3J (erase scrollback) before replaying the
+          // ring buffer. xterm's \x1b[3J handler resets ybase/ydisp to 0 but does NOT
+          // reset the internal `isUserScrolling` flag. If the user was scrolled up before
+          // the connect/reconnect, `isUserScrolling` stays true. Then as replay content
+          // fills the buffer, ybase grows but ydisp stays at 0 — the user ends up pinned
+          // to the oldest scrollback content (the top). scrollToBottom() resets both
+          // ydisp = ybase and isUserScrolling = false, restoring the live view.
+          termRef.current?.scrollToBottom()
+          if (totalBytes > 48) setTermLoading(false)
+        })
       })
 
       const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
