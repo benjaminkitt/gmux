@@ -224,21 +224,30 @@ func TestParseNewLinesNameDoesNotAffectStatus(t *testing.T) {
 
 func TestParseNewLinesNameAmidToolUse(t *testing.T) {
 	// Simulates /name during an agent turn: the batch contains toolUse messages
-	// and a session_info entry. Only the title should change; no status events.
+	// and a session_info entry. Title should change; working should remain true.
 	events := NewPi().ParseNewLines([]string{
 		`{"type":"message","id":"a1","message":{"role":"assistant","stopReason":"toolUse","content":[]}}`,
 		`{"type":"message","id":"tr1","message":{"role":"toolResult","content":""}}`,
 		`{"type":"session_info","name":"Refactoring auth"}`,
 		`{"type":"message","id":"a2","message":{"role":"assistant","stopReason":"toolUse","content":[]}}`,
 	})
-	if len(events) != 1 {
-		t.Fatalf("expected 1 event (title only), got %d", len(events))
+	// toolUse events emit working=true, session_info emits title.
+	var hasTitle bool
+	var lastWorking *bool
+	for _, e := range events {
+		if e.Title == "Refactoring auth" {
+			hasTitle = true
+		}
+		if e.Status != nil {
+			w := e.Status.Working
+			lastWorking = &w
+		}
 	}
-	if events[0].Title != "Refactoring auth" {
-		t.Errorf("expected title, got %q", events[0].Title)
+	if !hasTitle {
+		t.Error("expected title event 'Refactoring auth'")
 	}
-	if events[0].Status != nil {
-		t.Error("should not produce status events")
+	if lastWorking == nil || !*lastWorking {
+		t.Error("expected last status to be working=true (toolUse keeps working)")
 	}
 }
 
@@ -255,12 +264,101 @@ func TestParseNewLinesAssistantStop(t *testing.T) {
 }
 
 func TestParseNewLinesAssistantToolUse(t *testing.T) {
-	// toolUse stopReason means assistant is still working — no event
+	// toolUse stopReason means assistant is still working — emit working=true.
 	events := NewPi().ParseNewLines([]string{
 		`{"type":"message","id":"a1","message":{"role":"assistant","stopReason":"toolUse","content":[]}}`,
 	})
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event for toolUse, got %d", len(events))
+	}
+	if events[0].Status == nil || !events[0].Status.Working {
+		t.Error("expected working=true for toolUse (agent loop continues)")
+	}
+}
+
+func TestParseNewLinesAssistantAborted(t *testing.T) {
+	// User pressed Esc — agent is idle.
+	events := NewPi().ParseNewLines([]string{
+		`{"type":"message","id":"a1","message":{"role":"assistant","stopReason":"aborted","content":[]}}`,
+	})
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].Status == nil || events[0].Status.Working {
+		t.Error("expected working=false on aborted")
+	}
+}
+
+func TestParseNewLinesAssistantError(t *testing.T) {
+	// Generation error — agent is idle (may auto-retry).
+	events := NewPi().ParseNewLines([]string{
+		`{"type":"message","id":"a1","message":{"role":"assistant","stopReason":"error","content":[]}}`,
+	})
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].Status == nil || events[0].Status.Working {
+		t.Error("expected working=false on error")
+	}
+}
+
+func TestParseNewLinesErrorAutoRetry(t *testing.T) {
+	// Error followed by automatic retry (toolUse). The last status should
+	// be working=true — the error cleared it, but the retry re-asserted it.
+	events := NewPi().ParseNewLines([]string{
+		`{"type":"message","id":"a1","message":{"role":"assistant","stopReason":"error","content":[]}}`,
+		`{"type":"message","id":"a2","message":{"role":"assistant","stopReason":"toolUse","content":[]}}`,
+	})
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(events))
+	}
+	// First: error → idle
+	if events[0].Status == nil || events[0].Status.Working {
+		t.Error("first event should be idle (error)")
+	}
+	// Second: toolUse → working again
+	if events[1].Status == nil || !events[1].Status.Working {
+		t.Error("second event should be working (retry)")
+	}
+}
+
+func TestParseNewLinesFullTurnCycle(t *testing.T) {
+	// Complete turn: user → toolUse → toolUse → stop
+	events := NewPi().ParseNewLines([]string{
+		`{"type":"message","id":"u1","message":{"role":"user","content":[{"type":"text","text":"fix bug"}]}}`,
+		`{"type":"message","id":"a1","message":{"role":"assistant","stopReason":"toolUse","content":[]}}`,
+		`{"type":"message","id":"tr1","message":{"role":"toolResult","content":""}}`,
+		`{"type":"message","id":"a2","message":{"role":"assistant","stopReason":"toolUse","content":[]}}`,
+		`{"type":"message","id":"tr2","message":{"role":"toolResult","content":""}}`,
+		`{"type":"message","id":"a3","message":{"role":"assistant","stopReason":"stop","content":[{"type":"text","text":"Done."}]}}`,
+	})
+	// user=working, toolUse=working, toolUse=working, stop=idle
+	// (toolResult has no events)
+	if len(events) != 4 {
+		t.Fatalf("expected 4 events, got %d", len(events))
+	}
+	// Last event must be idle.
+	last := events[len(events)-1]
+	if last.Status == nil || last.Status.Working {
+		t.Error("last event should be idle (stop)")
+	}
+}
+
+func TestParseNewLinesIgnoresNonMessageTypes(t *testing.T) {
+	// All non-message, non-session_info types should be silently ignored.
+	events := NewPi().ParseNewLines([]string{
+		`{"type":"text","id":"t1","text":"some output"}`,
+		`{"type":"toolCall","id":"tc1","name":"bash"}`,
+		`{"type":"thinking","id":"th1","text":"let me think"}`,
+		`{"type":"model_change","id":"mc1","provider":"anthropic"}`,
+		`{"type":"compaction","id":"c1"}`,
+		`{"type":"branch_summary","id":"bs1"}`,
+		`{"type":"thinking_level_change","id":"tl1","thinkingLevel":"high"}`,
+		`{"type":"custom_message","id":"cm1"}`,
+		`{"type":"image","id":"i1"}`,
+	})
 	if len(events) != 0 {
-		t.Errorf("expected 0 events for toolUse, got %d", len(events))
+		t.Errorf("expected 0 events for non-message types, got %d", len(events))
 	}
 }
 

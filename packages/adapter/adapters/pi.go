@@ -181,9 +181,16 @@ func (p *Pi) ParseSessionFile(path string) (*adapter.SessionFileInfo, error) {
 // and returns events for meaningful changes.
 //
 // Signals:
-//   - session_info with name → title update
-//   - message role:"user" → working (assistant will respond) + title from first user text
-//   - message role:"assistant" stopReason:"stop" → idle (turn complete)
+//   - session_info with name → title update (no status change)
+//   - message role:"user" → working (assistant will respond)
+//   - message role:"assistant" — status depends on stopReason:
+//   - "toolUse" → working (tool loop continues)
+//   - "stop"    → idle (turn complete)
+//   - "aborted" → idle (user cancelled via Esc)
+//   - "error"   → idle (generation failed)
+//
+// Non-message types (text, toolCall, thinking, model_change, compaction,
+// branch_summary, thinking_level_change, custom_message, image) are ignored.
 func (p *Pi) ParseNewLines(lines []string) []adapter.FileEvent {
 	var events []adapter.FileEvent
 	for _, line := range lines {
@@ -227,8 +234,27 @@ func (p *Pi) ParseNewLines(lines []string) []adapter.FileEvent {
 				})
 
 			case "assistant":
-				if msg.Message.StopReason == "stop" {
+				switch msg.Message.StopReason {
+				case "toolUse":
+					// Assistant wants to call tools — agent loop continues.
+					// Emit working to re-assert status after any preceding
+					// error/abort that may have cleared it.
+					events = append(events, adapter.FileEvent{
+						Status: &adapter.Status{Working: true},
+					})
+				case "stop":
 					// Assistant finished its turn — clear status.
+					events = append(events, adapter.FileEvent{
+						Status: &adapter.Status{},
+					})
+				case "aborted":
+					// User pressed Esc to cancel — agent is idle.
+					events = append(events, adapter.FileEvent{
+						Status: &adapter.Status{},
+					})
+				case "error":
+					// Generation failed — agent is idle (may auto-retry,
+					// in which case the next toolUse will re-set working).
 					events = append(events, adapter.FileEvent{
 						Status: &adapter.Status{},
 					})

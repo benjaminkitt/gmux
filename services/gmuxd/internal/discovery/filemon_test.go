@@ -133,6 +133,247 @@ func TestActiveFileTracking(t *testing.T) {
 	}
 }
 
+// --- Pi status lifecycle tests ---
+// These test the full filemon pipeline: file write → ParseNewLines → store update.
+
+// setupPiFileMonitor creates a FileMonitor with a pi session pre-registered,
+// returns the monitor, store, session dir, and the session JSONL path.
+func setupPiFileMonitor(t *testing.T) (*FileMonitor, *store.Store, string) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	cwd := "/home/user/dev/project"
+	pi := adapters.NewPi()
+	sessionDir := pi.SessionDir(cwd)
+	if err := os.MkdirAll(sessionDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	s := store.New()
+	s.Upsert(store.Session{
+		ID:         "sess-pi",
+		Cwd:        cwd,
+		Kind:       "pi",
+		Alive:      true,
+		StartedAt:  time.Now().UTC().Format(time.RFC3339),
+		SocketPath: "/tmp/fake.sock",
+	})
+
+	fm := NewFileMonitor(s)
+	if fm.watcher != nil {
+		defer fm.watcher.Close()
+		fm.watcher.Close()
+		fm.watcher = nil // disable real inotify for unit tests
+	}
+
+	fm.sessions["sess-pi"] = &monitoredSession{
+		id:      "sess-pi",
+		cwd:     cwd,
+		kind:    "pi",
+		adapter: pi,
+		fileMon: pi,
+		filer:   pi,
+	}
+
+	return fm, s, sessionDir
+}
+
+// simulateFileWrite writes lines to a file and calls handleFileChange to
+// simulate what inotify would do. Pre-sets attribution if not already set.
+func simulateFileWrite(t *testing.T, fm *FileMonitor, sessionID, path string, lines ...string) {
+	t.Helper()
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatalf("open file: %v", err)
+	}
+	for _, l := range lines {
+		f.WriteString(l + "\n")
+	}
+	f.Close()
+	// Pre-set attribution to bypass scrollback-based matching (no real runner).
+	if _, ok := fm.attributions[path]; !ok {
+		fm.attributions[path] = sessionID
+	}
+	fm.handleFileChange(path)
+}
+
+func TestPiAbortClearsWorking(t *testing.T) {
+	fm, s, dir := setupPiFileMonitor(t)
+	path := filepath.Join(dir, "test.jsonl")
+
+	// Session header + user message → working.
+	simulateFileWrite(t, fm, "sess-pi", path,
+		`{"type":"session","id":"test-123","cwd":"/home/user/dev/project","timestamp":"2026-03-19T10:00:00Z"}`,
+		`{"type":"message","id":"u1","message":{"role":"user","content":[{"type":"text","text":"fix bug"}]}}`,
+	)
+	sess, _ := s.Get("sess-pi")
+	if sess.Status == nil || !sess.Status.Working {
+		t.Fatal("expected working=true after user message")
+	}
+
+	// toolUse → still working.
+	simulateFileWrite(t, fm, "sess-pi", path,
+		`{"type":"message","id":"a1","message":{"role":"assistant","stopReason":"toolUse","content":[]}}`,
+	)
+	sess, _ = s.Get("sess-pi")
+	if sess.Status == nil || !sess.Status.Working {
+		t.Fatal("expected working=true after toolUse")
+	}
+
+	// User presses Esc → aborted → idle.
+	simulateFileWrite(t, fm, "sess-pi", path,
+		`{"type":"message","id":"a2","message":{"role":"assistant","stopReason":"aborted","content":[]}}`,
+	)
+	sess, _ = s.Get("sess-pi")
+	if sess.Status != nil {
+		t.Fatalf("expected nil status (idle) after abort, got %+v", sess.Status)
+	}
+}
+
+func TestPiErrorClearsWorking(t *testing.T) {
+	fm, s, dir := setupPiFileMonitor(t)
+	path := filepath.Join(dir, "test.jsonl")
+
+	simulateFileWrite(t, fm, "sess-pi", path,
+		`{"type":"session","id":"test-123","cwd":"/home/user/dev/project","timestamp":"2026-03-19T10:00:00Z"}`,
+		`{"type":"message","id":"u1","message":{"role":"user","content":[{"type":"text","text":"fix bug"}]}}`,
+	)
+	sess, _ := s.Get("sess-pi")
+	if sess.Status == nil || !sess.Status.Working {
+		t.Fatal("expected working=true after user message")
+	}
+
+	// Error → idle.
+	simulateFileWrite(t, fm, "sess-pi", path,
+		`{"type":"message","id":"a1","message":{"role":"assistant","stopReason":"error","content":[]}}`,
+	)
+	sess, _ = s.Get("sess-pi")
+	if sess.Status != nil {
+		t.Fatalf("expected nil status (idle) after error, got %+v", sess.Status)
+	}
+}
+
+func TestPiErrorAutoRetryResetsWorking(t *testing.T) {
+	fm, s, dir := setupPiFileMonitor(t)
+	path := filepath.Join(dir, "test.jsonl")
+
+	simulateFileWrite(t, fm, "sess-pi", path,
+		`{"type":"session","id":"test-123","cwd":"/home/user/dev/project","timestamp":"2026-03-19T10:00:00Z"}`,
+		`{"type":"message","id":"u1","message":{"role":"user","content":[{"type":"text","text":"fix bug"}]}}`,
+	)
+
+	// Error followed by auto-retry (both in same batch).
+	simulateFileWrite(t, fm, "sess-pi", path,
+		`{"type":"message","id":"a1","message":{"role":"assistant","stopReason":"error","content":[]}}`,
+		`{"type":"message","id":"a2","message":{"role":"assistant","stopReason":"toolUse","content":[]}}`,
+	)
+	sess, _ := s.Get("sess-pi")
+	if sess.Status == nil || !sess.Status.Working {
+		t.Fatal("expected working=true after error auto-retry (toolUse)")
+	}
+}
+
+func TestPiNameDuringWorkPreservesStatus(t *testing.T) {
+	fm, s, dir := setupPiFileMonitor(t)
+	path := filepath.Join(dir, "test.jsonl")
+
+	simulateFileWrite(t, fm, "sess-pi", path,
+		`{"type":"session","id":"test-123","cwd":"/home/user/dev/project","timestamp":"2026-03-19T10:00:00Z"}`,
+		`{"type":"message","id":"u1","message":{"role":"user","content":[{"type":"text","text":"fix bug"}]}}`,
+	)
+
+	// /name while working → title changes, working preserved.
+	simulateFileWrite(t, fm, "sess-pi", path,
+		`{"type":"session_info","name":"Bug fix session"}`,
+	)
+	sess, _ := s.Get("sess-pi")
+	if sess.AdapterTitle != "Bug fix session" {
+		t.Errorf("expected title 'Bug fix session', got %q", sess.AdapterTitle)
+	}
+	if sess.Status == nil || !sess.Status.Working {
+		t.Fatal("expected working=true preserved after /name")
+	}
+}
+
+func TestPiFullLifecycle(t *testing.T) {
+	fm, s, dir := setupPiFileMonitor(t)
+	path := filepath.Join(dir, "test.jsonl")
+
+	// 1. Session starts.
+	simulateFileWrite(t, fm, "sess-pi", path,
+		`{"type":"session","id":"test-123","cwd":"/home/user/dev/project","timestamp":"2026-03-19T10:00:00Z"}`,
+	)
+	sess, _ := s.Get("sess-pi")
+	if sess.Status != nil {
+		t.Fatalf("expected nil status on fresh session, got %+v", sess.Status)
+	}
+
+	// 2. User message → working.
+	simulateFileWrite(t, fm, "sess-pi", path,
+		`{"type":"message","id":"u1","message":{"role":"user","content":[{"type":"text","text":"fix bug"}]}}`,
+	)
+	sess, _ = s.Get("sess-pi")
+	if sess.Status == nil || !sess.Status.Working {
+		t.Fatal("expected working after user message")
+	}
+	if sess.AdapterTitle != "fix bug" {
+		t.Errorf("expected title 'fix bug', got %q", sess.AdapterTitle)
+	}
+
+	// 3. Tool loop.
+	simulateFileWrite(t, fm, "sess-pi", path,
+		`{"type":"message","id":"a1","message":{"role":"assistant","stopReason":"toolUse","content":[]}}`,
+		`{"type":"message","id":"tr1","message":{"role":"toolResult","content":""}}`,
+	)
+	sess, _ = s.Get("sess-pi")
+	if sess.Status == nil || !sess.Status.Working {
+		t.Fatal("expected working during tool loop")
+	}
+
+	// 4. Error + auto-retry.
+	simulateFileWrite(t, fm, "sess-pi", path,
+		`{"type":"message","id":"a2","message":{"role":"assistant","stopReason":"error","content":[]}}`,
+		`{"type":"message","id":"a3","message":{"role":"assistant","stopReason":"toolUse","content":[]}}`,
+		`{"type":"message","id":"tr2","message":{"role":"toolResult","content":""}}`,
+	)
+	sess, _ = s.Get("sess-pi")
+	if sess.Status == nil || !sess.Status.Working {
+		t.Fatal("expected working after error auto-retry")
+	}
+
+	// 5. Agent finishes.
+	simulateFileWrite(t, fm, "sess-pi", path,
+		`{"type":"message","id":"a4","message":{"role":"assistant","stopReason":"stop","content":[{"type":"text","text":"Done."}]}}`,
+	)
+	sess, _ = s.Get("sess-pi")
+	if sess.Status != nil {
+		t.Fatalf("expected idle after stop, got %+v", sess.Status)
+	}
+
+	// 6. Second turn.
+	simulateFileWrite(t, fm, "sess-pi", path,
+		`{"type":"message","id":"u2","message":{"role":"user","content":[{"type":"text","text":"also fix login"}]}}`,
+	)
+	sess, _ = s.Get("sess-pi")
+	if sess.Status == nil || !sess.Status.Working {
+		t.Fatal("expected working after second user message")
+	}
+	// Title should still be from first user message.
+	if sess.AdapterTitle != "fix bug" {
+		t.Errorf("title should stay 'fix bug', got %q", sess.AdapterTitle)
+	}
+
+	// 7. User aborts.
+	simulateFileWrite(t, fm, "sess-pi", path,
+		`{"type":"message","id":"a5","message":{"role":"assistant","stopReason":"aborted","content":[]}}`,
+	)
+	sess, _ = s.Get("sess-pi")
+	if sess.Status != nil {
+		t.Fatalf("expected idle after abort, got %+v", sess.Status)
+	}
+}
+
 func TestAttributionStickiness(t *testing.T) {
 	s := store.New()
 	fm := NewFileMonitor(s)
