@@ -1,7 +1,6 @@
 package adapter
 
 import (
-	"os"
 	"testing"
 )
 
@@ -17,6 +16,7 @@ func (a *testAdapter) Env(_ EnvContext) []string { return nil }
 func (a *testAdapter) Monitor(_ []byte) *Status  { return nil }
 
 func TestRegistryFallback(t *testing.T) {
+	t.Setenv("GMUX_ADAPTER", "") // isolate from ambient env (e.g. running inside gmux)
 	r := NewRegistry()
 	r.SetFallback(&testAdapter{name: "shell", matches: true})
 	a := r.Resolve([]string{"unknown"})
@@ -26,6 +26,7 @@ func TestRegistryFallback(t *testing.T) {
 }
 
 func TestRegistryFirstMatch(t *testing.T) {
+	t.Setenv("GMUX_ADAPTER", "") // isolate from ambient env (e.g. running inside gmux)
 	r := NewRegistry()
 	r.SetFallback(&testAdapter{name: "shell", matches: true})
 	r.Register(&testAdapter{name: "pi", matches: true})
@@ -37,6 +38,7 @@ func TestRegistryFirstMatch(t *testing.T) {
 }
 
 func TestRegistrySkipNonMatch(t *testing.T) {
+	t.Setenv("GMUX_ADAPTER", "") // isolate from ambient env (e.g. running inside gmux)
 	r := NewRegistry()
 	r.SetFallback(&testAdapter{name: "shell", matches: true})
 	r.Register(&testAdapter{name: "pi", matches: false})
@@ -48,12 +50,10 @@ func TestRegistrySkipNonMatch(t *testing.T) {
 }
 
 func TestRegistryEnvOverride(t *testing.T) {
+	t.Setenv("GMUX_ADAPTER", "pi")
 	r := NewRegistry()
 	r.SetFallback(&testAdapter{name: "shell", matches: true})
 	r.Register(&testAdapter{name: "pi", matches: false})
-
-	os.Setenv("GMUX_ADAPTER", "pi")
-	defer os.Unsetenv("GMUX_ADAPTER")
 
 	if a := r.Resolve([]string{"anything"}); a.Name() != "pi" {
 		t.Fatalf("expected 'pi' from env override, got %q", a.Name())
@@ -61,12 +61,10 @@ func TestRegistryEnvOverride(t *testing.T) {
 }
 
 func TestRegistryEnvOverrideUnknown(t *testing.T) {
+	t.Setenv("GMUX_ADAPTER", "nonexistent")
 	r := NewRegistry()
 	r.SetFallback(&testAdapter{name: "shell", matches: true})
 	r.Register(&testAdapter{name: "pi", matches: false})
-
-	os.Setenv("GMUX_ADAPTER", "nonexistent")
-	defer os.Unsetenv("GMUX_ADAPTER")
 
 	if a := r.Resolve([]string{"anything"}); a.Name() != "shell" {
 		t.Fatalf("expected 'shell' fallback for unknown override, got %q", a.Name())
