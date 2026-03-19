@@ -612,21 +612,27 @@ const IconWordLeft  = () => <svg viewBox="0 0 18 14" width="20" height="16" {...
 // →| jump to end of next word
 const IconWordRight = () => <svg viewBox="0 0 18 14" width="20" height="16" {...S}><line x1="14.5" y1="3" x2="14.5" y2="11"/><path d="M5 7h7m0 0-3-3m3 3-3 3"/></svg>
 // ↵ return — stem drops from top-right, curves into a horizontal shaft pointing left
-const IconReturn = () => <svg viewBox="0 0 14 14" width="16" height="16" {...S}><path d="M12 4V5.5Q12 7 10 7H4m0 0 3-3M4 7l3 3"/></svg>
+const IconReturn = () => <svg viewBox="0 0 14 14" width="16" height="16" {...S}><path d="M11.5 4.5V5.5Q11.5 7 9.5 7H3m0 0 3-3M3 7l3 3"/></svg>
 
 function MobileTerminalBar({
   canSend,
   ctrlArmed,
+  altArmed,
+  backgroundActivity,
   onMenu,
   onSend,
   onToggleCtrl,
+  onToggleAlt,
   onFocusTerminal,
 }: {
   canSend: boolean
   ctrlArmed: boolean
+  altArmed: boolean
+  backgroundActivity: 'working' | 'unread' | 'none'
   onMenu: () => void
   onSend: (data: string) => void
   onToggleCtrl: () => void
+  onToggleAlt: () => void
   onFocusTerminal: () => void
 }) {
   // Prevent blur from stealing focus away from the terminal on mousedown,
@@ -638,7 +644,11 @@ function MobileTerminalBar({
 
   return (
     <div class="mobile-bottom-bar" aria-label="Mobile terminal controls">
-      <button class="mobile-bottom-action" onClick={onMenu} title="Open sessions">
+      <button
+        class={`mobile-bottom-action menu-btn${backgroundActivity !== 'none' ? ` bg-${backgroundActivity}` : ''}`}
+        onClick={onMenu}
+        title="Open sessions"
+      >
         ☰
       </button>
       <div class="mobile-bottom-sep" />
@@ -656,7 +666,7 @@ function MobileTerminalBar({
           : <button class="mobile-bottom-action" disabled={!canSend} onClick={() => tap('\t')} title="Tab">tab</button>
         }
 
-        {/* ctrl toggle — opens keyboard so the user can type the modified key */}
+        {/* ctrl toggle */}
         <button
           class={`mobile-bottom-action ${ctrlArmed ? 'armed' : ''}`}
           disabled={!canSend}
@@ -665,6 +675,17 @@ function MobileTerminalBar({
           aria-pressed={ctrlArmed}
         >
           ctrl
+        </button>
+
+        {/* alt toggle */}
+        <button
+          class={`mobile-bottom-action ${altArmed ? 'armed' : ''}`}
+          disabled={!canSend}
+          onClick={() => { onToggleAlt(); onFocusTerminal() }}
+          title={altArmed ? 'Alt armed for next typed key' : 'Arm Alt for next typed key'}
+          aria-pressed={altArmed}
+        >
+          alt
         </button>
 
         {/* Position 4: ←  ──or──  word-left when ctrl armed */}
@@ -711,6 +732,7 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [connState, setConnState] = useState<ConnectionState>('connecting')
   const [ctrlArmed, setCtrlArmed] = useState(false)
+  const [altArmed, setAltArmed] = useState(false)
   const [launchers, setLaunchers] = useState<LauncherDef[]>([])
   const [health, setHealth] = useState<HealthData | null>(null)
   const [sidebarVersion, forceUpdate] = useState(0) // re-render on sidebar state change
@@ -823,6 +845,14 @@ function App() {
     return s
   }, [sessions, selectedId])
 
+  // Dot indicator for the hamburger: any *other* alive session that is busy or unread.
+  const backgroundActivity = useMemo((): 'working' | 'unread' | 'none' => {
+    const others = sessions.filter(s => s.id !== selectedId && s.alive)
+    if (others.some(s => s.status?.working)) return 'working'
+    if (others.some(s => s.unread))          return 'unread'
+    return 'none'
+  }, [sessions, selectedId])
+
   // Auto-select: pick first attachable session on initial load.
   const hasAutoSelected = useRef(false)
   useEffect(() => {
@@ -865,6 +895,7 @@ function App() {
     setResumingId(null) // cancel any pending resume auto-select
     setSelectedId(id)
     setCtrlArmed(false)
+    setAltArmed(false)
   }, [sessions])
 
   // When a resumed session comes alive, select it.
@@ -889,7 +920,7 @@ function App() {
 
   // Selected = what the terminal shows. No terminal → deselect.
   useEffect(() => {
-    if (!canAttach) setCtrlArmed(false)
+    if (!canAttach) { setCtrlArmed(false); setAltArmed(false) }
     if (selectedId && (!selected || !selected.alive)) {
       setSelectedId(null)
     }
@@ -918,6 +949,15 @@ function App() {
 
   const handleCtrlConsumed = useCallback(() => {
     setCtrlArmed(false)
+  }, [])
+
+  const handleToggleAlt = useCallback(() => {
+    if (!canAttach) return
+    setAltArmed((armed) => !armed)
+  }, [canAttach])
+
+  const handleAltConsumed = useCallback(() => {
+    setAltArmed(false)
   }, [])
 
   return (
@@ -958,6 +998,8 @@ function App() {
             session={selected}
             ctrlArmed={ctrlArmed}
             onCtrlConsumed={handleCtrlConsumed}
+            altArmed={altArmed}
+            onAltConsumed={handleAltConsumed}
             onInputReady={handleTerminalInputReady}
             onFocusReady={handleTerminalFocusReady}
           />
@@ -968,9 +1010,12 @@ function App() {
         <MobileTerminalBar
           canSend={canAttach}
           ctrlArmed={ctrlArmed}
+          altArmed={altArmed}
+          backgroundActivity={backgroundActivity}
           onMenu={() => setSidebarOpen(true)}
           onSend={handleMobileInput}
           onToggleCtrl={handleToggleCtrl}
+          onToggleAlt={handleToggleAlt}
           onFocusTerminal={handleFocusTerminal}
         />
       </div>

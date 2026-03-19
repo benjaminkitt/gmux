@@ -1039,7 +1039,27 @@ body {
     justify-content: center;
     touch-action: manipulation;
     transition: background 0.1s, border-color 0.1s, color 0.1s;
+    position: relative;
   }
+
+  /* Background-activity dot on the hamburger menu button.
+     Pseudo-elements don't expand the hit-box, so taps outside the button
+     border still pass through correctly. */
+  .mobile-bottom-action.menu-btn.bg-working::after,
+  .mobile-bottom-action.menu-btn.bg-unread::after {
+    content: '';
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    top: -3px;
+    right: -3px;
+    pointer-events: none;
+    /* Ring in the page background so the dot reads cleanly against the button border */
+    box-shadow: 0 0 0 1.5px var(--bg-base);
+  }
+  .mobile-bottom-action.menu-btn.bg-working::after { background: var(--accent); }
+  .mobile-bottom-action.menu-btn.bg-unread::after  { background: var(--unread); }
 
   .mobile-terminal-actions .mobile-bottom-action {
     flex: 1 1 0;
