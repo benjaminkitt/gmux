@@ -24,3 +24,12 @@ Common causes:
 ```bash
 gmuxd start
 ```
+
+## Version mismatch after update
+
+After updating gmux, you may briefly see stale sessions or unexpected behavior if the old daemon is still running. This is handled automatically:
+
+- **Homebrew**: the postflight hook restarts the daemon during install
+- **Manual installs**: the next `gmux` invocation detects the version mismatch and replaces the daemon
+
+To force a restart manually: `gmuxd shutdown && gmuxd start`.

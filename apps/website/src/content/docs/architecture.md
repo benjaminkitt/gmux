@@ -29,7 +29,7 @@ One per machine. It:
 
 `gmuxd` is stateless — if it restarts, it rediscovers running sessions. On startup it hashes the `gmux` binary it ships with; sessions running a different build are marked **stale** so the UI can flag them.
 
-`gmux` auto-starts `gmuxd` if it isn't already running.
+`gmux` auto-starts `gmuxd` if it isn't already running. If a daemon from an older version is detected, `gmux` automatically replaces it with `--replace` so the child process always talks to a compatible daemon.
 
 Configuration lives in `~/.config/gmux/config.toml`. See [Security](/security) and [Remote Access](/remote-access) for details.
 

@@ -18,6 +18,14 @@ description: How gmux versions its artifacts and contracts.
 
 gmuxd detects whether running gmux sessions match the current build using binary hash comparison. Mismatched sessions are marked **stale** in the UI — they still work, but may behave differently than newly launched sessions. See [Architecture](/architecture) for details.
 
+## Automatic daemon upgrade
+
+When `gmux` starts, it checks the running daemon's version via `/v1/health`. If the daemon reports a different version, `gmux` replaces it with `gmuxd start --replace`. This happens transparently — existing sessions stay alive, and the new daemon rediscovers them.
+
+Homebrew installs handle this at install time: the postflight hook detects a running daemon, shuts it down, and starts the new version in the background. Manual installs get the same behavior on the next `gmux` invocation.
+
+Dev builds (`version=dev`) skip version checking and never replace — this avoids churn when running `dev.sh` alongside a production daemon.
+
 ## Contract versioning
 
 Breaking API or schema changes require a new version prefix. Non-breaking additions (new optional fields) are fine within a version.

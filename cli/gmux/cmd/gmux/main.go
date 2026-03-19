@@ -253,32 +253,85 @@ func main() {
 }
 
 // ensureGmuxd checks if gmuxd is reachable and starts it if not.
+// If a daemon is running but reports a different version, it is replaced
+// with --replace so the child process always talks to a compatible daemon.
 // Called once at startup — if gmuxd dies later, we don't restart it.
-// Returns true if gmuxd was started by this call.
+// Returns true if gmuxd was started (or replaced) by this call.
 func ensureGmuxd(gmuxdAddr string) bool {
-	// Quick health check — if it's already running, nothing to do.
-	if gmuxdHealthy(gmuxdAddr, 500*time.Millisecond) {
+	// Quick health check — if it's already running at our version, nothing to do.
+	needsStart, needsReplace := gmuxdNeedsStart(gmuxdAddr)
+	if !needsStart {
 		return false
 	}
 
-	// Not running — find gmuxd binary: sibling first, then PATH.
-	var gmuxdBin string
-	if self, err := os.Executable(); err == nil {
-		sibling := filepath.Join(filepath.Dir(self), "gmuxd")
-		if _, err := os.Stat(sibling); err == nil {
-			gmuxdBin = sibling
-		}
-	}
-	if gmuxdBin == "" {
-		if p, err := exec.LookPath("gmuxd"); err == nil {
-			gmuxdBin = p
-		}
-	}
+	gmuxdBin := findGmuxdBin()
 	if gmuxdBin == "" {
 		log.Printf("warning: gmuxd not found (install it alongside gmux or add it to PATH)")
 		return false
 	}
 
+	args := []string{"start"}
+	if needsReplace {
+		args = append(args, "--replace")
+	}
+	return startGmuxd(gmuxdBin, args)
+}
+
+// gmuxdNeedsStart checks the running daemon. Returns (needsStart, needsReplace).
+// needsStart=false means a compatible daemon is already running.
+// needsStart=true, needsReplace=false means no daemon is running.
+// needsStart=true, needsReplace=true means a stale daemon needs replacing.
+func gmuxdNeedsStart(gmuxdAddr string) (needsStart, needsReplace bool) {
+	// "dev" builds never replace — avoids churn during development.
+	if version == "dev" {
+		healthy := gmuxdHealthy(gmuxdAddr, 500*time.Millisecond)
+		return !healthy, false
+	}
+
+	client := &http.Client{Timeout: 500 * time.Millisecond}
+	resp, err := client.Get(gmuxdAddr + "/v1/health")
+	if err != nil {
+		return true, false // not running
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return true, false // not healthy
+	}
+
+	var health struct {
+		Data struct {
+			Version string `json:"version"`
+		} `json:"data"`
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if json.Unmarshal(body, &health) != nil {
+		return false, false // can't parse, leave it alone
+	}
+
+	if health.Data.Version == version {
+		return false, false // same version, all good
+	}
+
+	// Running but stale — needs replacement.
+	return true, true
+}
+
+// findGmuxdBin locates the gmuxd binary: sibling first, then PATH.
+func findGmuxdBin() string {
+	if self, err := os.Executable(); err == nil {
+		sibling := filepath.Join(filepath.Dir(self), "gmuxd")
+		if _, err := os.Stat(sibling); err == nil {
+			return sibling
+		}
+	}
+	if p, err := exec.LookPath("gmuxd"); err == nil {
+		return p
+	}
+	return ""
+}
+
+// startGmuxd launches gmuxd in the background with the given args.
+func startGmuxd(gmuxdBin string, args []string) bool {
 	// Log gmuxd output to a file so users can diagnose startup failures.
 	logPath := filepath.Join(os.TempDir(), "gmuxd.log")
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
@@ -286,7 +339,7 @@ func ensureGmuxd(gmuxdAddr string) bool {
 		logFile = nil
 	}
 
-	cmd := exec.Command(gmuxdBin, "start")
+	cmd := exec.Command(gmuxdBin, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	cmd.Stdout = nil
 	cmd.Stderr = logFile
