@@ -654,14 +654,14 @@ function MobileTerminalBar({
       <div class="mobile-bottom-sep" />
       <div class="mobile-terminal-actions" role="toolbar" aria-label="Terminal keys" onMouseDown={keepFocus}>
 
-        {/* Position 1: esc  ──or──  ↑ when ctrl armed */}
-        {ctrlArmed
+        {/* Position 1: esc  ──or──  ↑ when ctrl or alt armed */}
+        {(ctrlArmed || altArmed)
           ? <button class="mobile-bottom-action" disabled={!canSend} onClick={() => tap('\x1b[A')} title="Up arrow"><IconUp /></button>
           : <button class="mobile-bottom-action" disabled={!canSend} onClick={() => onSend('\x1b')} title="Escape">esc</button>
         }
 
-        {/* Position 2: tab  ──or──  ↓ when ctrl armed */}
-        {ctrlArmed
+        {/* Position 2: tab  ──or──  ↓ when ctrl or alt armed */}
+        {(ctrlArmed || altArmed)
           ? <button class="mobile-bottom-action" disabled={!canSend} onClick={() => tap('\x1b[B')} title="Down arrow"><IconDown /></button>
           : <button class="mobile-bottom-action" disabled={!canSend} onClick={() => tap('\t')} title="Tab">tab</button>
         }
