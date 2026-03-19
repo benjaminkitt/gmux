@@ -706,7 +706,7 @@ function MobileTerminalBar({
         {/* Position 1: esc  ──or──  ↑ when ctrl or alt armed */}
         {(ctrlArmed || altArmed)
           ? <button class="mobile-bottom-action" disabled={!canSend} onClick={() => tap('\x1b[A')} title="Up arrow"><IconUp /></button>
-          : <button class="mobile-bottom-action" disabled={!canSend} onClick={() => onSend('\x1b')} title="Escape">esc</button>
+          : <button class="mobile-bottom-action" disabled={!canSend} onClick={() => tap('\x1b')} title="Escape">esc</button>
         }
 
         {/* Position 2: tab  ──or──  ↓ when ctrl or alt armed */}
@@ -737,31 +737,24 @@ function MobileTerminalBar({
           alt
         </button>
 
-        {/* Position 4: ←  ──or──  word-left when ctrl/hold-word active; hold to repeat → word-skip */}
-        <button
-          class="mobile-bottom-action"
-          disabled={!canSend}
-          onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); e.preventDefault(); const s = showCtrl ? '\x1b[1;5D' : '\x1b[D'; tap(s); startArrowHold(s, '\x1b[1;5D') }}
-          onPointerUp={clearHold}
-          onPointerCancel={clearHold}
-          onContextMenu={e => e.preventDefault()}
-          title={showCtrl ? 'Word left' : 'Left arrow (hold to repeat)'}
-        >
-          {showCtrl ? <IconWordLeft /> : <IconLeft />}
-        </button>
-
-        {/* Position 5: →  ──or──  word-right when ctrl/hold-word active; hold to repeat → word-skip */}
-        <button
-          class="mobile-bottom-action"
-          disabled={!canSend}
-          onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); e.preventDefault(); const s = showCtrl ? '\x1b[1;5C' : '\x1b[C'; tap(s); startArrowHold(s, '\x1b[1;5C') }}
-          onPointerUp={clearHold}
-          onPointerCancel={clearHold}
-          onContextMenu={e => e.preventDefault()}
-          title={showCtrl ? 'Word right' : 'Right arrow (hold to repeat)'}
-        >
-          {showCtrl ? <IconWordRight /> : <IconRight />}
-        </button>
+        {/* Position 4 & 5: ← →  ──or──  word-left/right when ctrl/hold-word active.
+            Hold to repeat; hold longer to switch to word navigation. */}
+        {([
+          { seq: '\x1b[D', wordSeq: '\x1b[1;5D', title: 'Left arrow',  wordTitle: 'Word left',  Icon: IconLeft,  WordIcon: IconWordLeft  },
+          { seq: '\x1b[C', wordSeq: '\x1b[1;5C', title: 'Right arrow', wordTitle: 'Word right', Icon: IconRight, WordIcon: IconWordRight },
+        ] as const).map(({ seq, wordSeq, title, wordTitle, Icon, WordIcon }) => (
+          <button
+            class="mobile-bottom-action"
+            disabled={!canSend}
+            onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); e.preventDefault(); const s = showCtrl ? wordSeq : seq; tap(s); startArrowHold(s, wordSeq) }}
+            onPointerUp={clearHold}
+            onPointerCancel={clearHold}
+            onContextMenu={e => e.preventDefault()}
+            title={showCtrl ? wordTitle : `${title} (hold to repeat)`}
+          >
+            {showCtrl ? <WordIcon /> : <Icon />}
+          </button>
+        ))}
 
         <button class="mobile-bottom-action" disabled={!canSend} onClick={() => tap('\n')} title="Enter"><IconReturn /></button>
       </div>
