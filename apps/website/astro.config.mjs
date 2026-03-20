@@ -60,6 +60,7 @@ export default defineConfig({
           items: [
             { label: 'Session Persistence', slug: 'planned/session-persistence' },
             { label: 'Probes', slug: 'planned/probes' },
+            { label: 'Notifications', slug: 'planned/notifications' },
             { label: 'Mobile Notifications', slug: 'planned/mobile-notifications' },
           ],
         },

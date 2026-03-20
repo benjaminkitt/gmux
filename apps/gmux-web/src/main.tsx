@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import '@xterm/xterm/css/xterm.css'
 import './styles.css'
 import { createSidebarState } from './sidebar-state'
+import { connectPresence } from './presence'
+import type { NotifyMessage, CancelMessage } from './presence'
 import { TerminalView } from './terminal'
 import { useArrivalPulse } from './use-arrival-pulse'
 
@@ -422,6 +424,8 @@ function Sidebar({
   open,
   onClose,
   health,
+  notifPermission,
+  onRequestNotifPermission,
 }: {
   folders: Folder[]
   hiddenFolders: Folder[]
@@ -434,6 +438,8 @@ function Sidebar({
   open: boolean
   onClose: () => void
   health: HealthData | null
+  notifPermission: NotifPermission
+  onRequestNotifPermission: () => void
 }) {
   const [showFolderPicker, setShowFolderPicker] = useState(false)
 
@@ -475,28 +481,42 @@ function Sidebar({
             />
           ))}
         </div>
-        {hiddenFolders.length > 0 && (
+        {(hiddenFolders.length > 0 || notifPermission === 'default' || notifPermission === 'denied') && (
           <div class="sidebar-footer">
-            <button
-              class="add-folder-btn"
-              onClick={() => setShowFolderPicker(v => !v)}
-            >
-              + Add folder
-            </button>
-            {showFolderPicker && (
-              <div class="folder-picker">
-                {hiddenFolders.map(f => (
-                  <button
-                    key={f.path}
-                    class="folder-picker-item"
-                    onClick={() => {
-                      onShowFolder(f.path)
-                      setShowFolderPicker(false)
-                    }}
-                  >
-                    <span class="folder-picker-name">{f.name}</span>
-                  </button>
-                ))}
+            {hiddenFolders.length > 0 && (
+              <>
+                <button
+                  class="add-folder-btn"
+                  onClick={() => setShowFolderPicker(v => !v)}
+                >
+                  + Add folder
+                </button>
+                {showFolderPicker && (
+                  <div class="folder-picker">
+                    {hiddenFolders.map(f => (
+                      <button
+                        key={f.path}
+                        class="folder-picker-item"
+                        onClick={() => {
+                          onShowFolder(f.path)
+                          setShowFolderPicker(false)
+                        }}
+                      >
+                        <span class="folder-picker-name">{f.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+            {notifPermission === 'default' && (
+              <button class="notif-btn" onClick={onRequestNotifPermission}>
+                <IconBell /> Enable notifications
+              </button>
+            )}
+            {notifPermission === 'denied' && (
+              <div class="notif-denied">
+                <IconBell muted /> Notifications blocked in browser settings
               </div>
             )}
           </div>
@@ -632,6 +652,15 @@ const IconWordLeft  = () => <svg viewBox="0 0 18 14" width="20" height="16" {...
 const IconWordRight = () => <svg viewBox="0 0 18 14" width="20" height="16" {...S}><line x1="14.5" y1="3" x2="14.5" y2="11"/><path d="M5 7h7m0 0-3-3m3 3-3 3"/></svg>
 // ↵ return — stem drops from top-right, curves into a horizontal shaft pointing left
 const IconReturn = () => <svg viewBox="0 0 14 14" width="16" height="16" {...S}><path d="M11.5 4.5V5.5Q11.5 7 9.5 7H3m0 0 3-3M3 7l3 3"/></svg>
+// 🔔 bell — used for notification permission button
+const IconBell = ({ muted }: { muted?: boolean }) => (
+  <svg viewBox="0 0 14 14" width="14" height="14" {...S} style={{ opacity: muted ? 0.4 : 1 }}>
+    <path d="M7 2a4 4 0 0 1 4 4v2.5l1 1.5H2l1-1.5V6a4 4 0 0 1 4-4Z"/>
+    <path d="M5.5 11.5a1.5 1.5 0 0 0 3 0" stroke-width="1.2"/>
+  </svg>
+)
+
+type NotifPermission = 'default' | 'granted' | 'denied' | 'unavailable'
 
 function MobileTerminalBar({
   canSend,
@@ -815,6 +844,14 @@ function App() {
   const [sidebarVersion, forceUpdate] = useState(0) // re-render on sidebar state change
   const terminalInputRef = useRef<((data: string) => void) | null>(null)
   const terminalFocusRef = useRef<(() => void) | null>(null)
+
+  // Notification permission — not reactive, so we keep a tick to force a re-read after
+  // requestPermission() resolves.
+  const [, forceNotifPermUpdate] = useState(0)
+  const notifPermission: NotifPermission = 'Notification' in window ? Notification.permission : 'unavailable'
+  const activeNotifsRef   = useRef<Map<string, Notification>>(new Map())
+  const presenceRef       = useRef<ReturnType<typeof connectPresence> | null>(null)
+  const lastInteractionRef = useRef(Date.now() / 1000)
 
   useEffect(() => { fetchConfig().then(cfg => setLaunchers(cfg.launchers)) }, [])
   useEffect(() => { fetchHealth().then(setHealth) }, [])
@@ -1037,6 +1074,89 @@ function App() {
     setAltArmed(false)
   }, [])
 
+  const handleRequestNotifPermission = useCallback(async () => {
+    await Notification.requestPermission()
+    forceNotifPermUpdate(n => n + 1)
+    presenceRef.current?.sendPermission(Notification.permission)
+  }, [])
+
+  // ── Presence connection (daemon-driven notifications) ──
+
+  // Show a notification when the daemon tells us to.
+  const handleNotify = useCallback((msg: NotifyMessage) => {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return
+    const n = new Notification(msg.title, {
+      body: msg.body,
+      tag: msg.tag,
+      icon: '/favicon.svg',
+    })
+    activeNotifsRef.current.set(msg.id, n)
+    n.onclose = () => activeNotifsRef.current.delete(msg.id)
+    n.onclick = () => {
+      window.focus()
+      if (msg.session_id) setSelectedId(msg.session_id)
+      n.close()
+    }
+  }, [])
+
+  // Dismiss a notification when the daemon tells us to (e.g. user opened
+  // the session on another device).
+  const handleCancel = useCallback((msg: CancelMessage) => {
+    const n = activeNotifsRef.current.get(msg.id)
+    if (n) { n.close(); activeNotifsRef.current.delete(msg.id) }
+  }, [])
+
+  // Connect presence WebSocket on mount.
+  useEffect(() => {
+    const p = connectPresence({ onNotify: handleNotify, onCancel: handleCancel })
+    presenceRef.current = p
+    return () => { p.close(); presenceRef.current = null }
+  }, [handleNotify, handleCancel])
+
+  // Track last user interaction for idle detection.
+  useEffect(() => {
+    const update = () => { lastInteractionRef.current = Date.now() / 1000 }
+    const events = ['mousemove', 'keydown', 'touchstart', 'scroll'] as const
+    events.forEach(e => document.addEventListener(e, update, { passive: true }))
+    return () => events.forEach(e => document.removeEventListener(e, update))
+  }, [])
+
+  // Report state changes to the daemon.
+  const reportPresence = useCallback(() => {
+    presenceRef.current?.sendState({
+      visibility: document.visibilityState,
+      focused: document.hasFocus(),
+      selected_session_id: selectedId,
+      last_interaction: lastInteractionRef.current,
+    })
+  }, [selectedId])
+
+  // Report whenever visibility, focus, or selected session changes.
+  useEffect(() => { reportPresence() }, [reportPresence])
+  useEffect(() => {
+    const report = () => reportPresence()
+    document.addEventListener('visibilitychange', report)
+    window.addEventListener('focus', report)
+    window.addEventListener('blur', report)
+    // Periodic heartbeat so lastInteraction stays fresh on the daemon side
+    // even when the user is actively typing but not changing sessions/tabs.
+    const heartbeat = setInterval(report, 30_000)
+    return () => {
+      document.removeEventListener('visibilitychange', report)
+      window.removeEventListener('focus', report)
+      window.removeEventListener('blur', report)
+      clearInterval(heartbeat)
+    }
+  }, [reportPresence])
+
+  // Tab title badge: show count of sessions with activity.
+  useEffect(() => {
+    const count = sessions.filter(s =>
+      s.id !== selectedId && s.alive && s.unread
+    ).length
+    document.title = count > 0 ? `(${count}) gmux` : 'gmux'
+  }, [sessions, selectedId])
+
   return (
     <div class="app-layout">
       <Sidebar
@@ -1051,6 +1171,8 @@ function App() {
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         health={health}
+        notifPermission={notifPermission}
+        onRequestNotifPermission={handleRequestNotifPermission}
       />
 
       <div class="main-panel">

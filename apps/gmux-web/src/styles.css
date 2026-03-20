@@ -523,6 +523,39 @@ body {
   color: var(--text-secondary);
 }
 
+.notif-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-family: 'Source Sans 3', sans-serif;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.notif-btn:hover {
+  border-color: var(--accent);
+  color: var(--text-secondary);
+}
+
+.notif-denied {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 6px;
+  padding: 5px 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 .folder-picker {
   margin-top: 4px;
   display: flex;

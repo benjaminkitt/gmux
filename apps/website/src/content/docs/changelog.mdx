@@ -31,6 +31,15 @@ Or download binaries directly from [GitHub Releases](https://github.com/gmuxapp/
 
 ---
 
+## v0.5.0
+
+### Notifications
+
+- **Daemon-driven OS notifications.** When a background session finishes or produces new output, gmux shows an OS notification. The daemon decides whether, when, and where to notify based on real-time presence tracking across all connected browsers.
+- **Smart suppression.** No notification fires if you're already focused on gmux (the sidebar dot is enough). A 5-second grace period cancels the notification if you switch back before it fires.
+- **Cross-device routing.** If your desktop has been idle for 2+ minutes but your phone was recently active, the notification routes to the phone.
+- **Tab title badge.** The browser tab shows `(1) gmux` when sessions have unread output, visible without switching tabs.
+
 ## v0.4.7
 
 ### Install

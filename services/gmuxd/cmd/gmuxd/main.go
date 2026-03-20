@@ -22,11 +22,14 @@ import (
 	"github.com/gmuxapp/gmux/services/gmuxd/internal/binhash"
 	"github.com/gmuxapp/gmux/services/gmuxd/internal/config"
 	"github.com/gmuxapp/gmux/services/gmuxd/internal/discovery"
+	"github.com/gmuxapp/gmux/services/gmuxd/internal/notify"
+	"github.com/gmuxapp/gmux/services/gmuxd/internal/presence"
 	"github.com/gmuxapp/gmux/services/gmuxd/internal/sessionfiles"
 	"github.com/gmuxapp/gmux/services/gmuxd/internal/store"
 	"github.com/gmuxapp/gmux/services/gmuxd/internal/tsauth"
 	"github.com/gmuxapp/gmux/services/gmuxd/internal/update"
 	"github.com/gmuxapp/gmux/services/gmuxd/internal/wsproxy"
+	"nhooyr.io/websocket"
 )
 
 // version is set at build time via -ldflags "-X main.version=..."
@@ -319,6 +322,26 @@ func serve(replace bool, stderr io.Writer) int {
 
 	// Start background update checker
 	updateChecker := update.New(version)
+
+	// ── Presence + Notification router ──
+
+	notifRouter := (*notify.Router)(nil) // assigned after presence table
+	presenceTable := presence.New(presence.Callbacks{
+		OnClientFocused: func(clientID string) {
+			if notifRouter != nil {
+				notifRouter.CancelAllPending()
+			}
+		},
+		OnSessionSelected: func(clientID, sessionID string) {
+			if notifRouter != nil {
+				notifRouter.CancelForSession(sessionID)
+			}
+		},
+	})
+	notifRouter = notify.New(presenceTable, sessions, notify.DefaultConfig())
+	notifCtx, notifCancel := context.WithCancel(context.Background())
+	go notifRouter.Run(notifCtx)
+	defer notifCancel()
 
 	mux := http.NewServeMux()
 
@@ -650,6 +673,81 @@ func serve(replace bool, stderr io.Writer) int {
 		return sess.SocketPath, nil
 	}, sessions)
 	mux.HandleFunc("/ws/{sessionID}", wsProxy.Handler())
+
+	// ── Presence WebSocket ──
+
+	mux.HandleFunc("/v1/presence", func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+			InsecureSkipVerify: true,
+		})
+		if err != nil {
+			log.Printf("presence: accept: %v", err)
+			return
+		}
+
+		clientID := fmt.Sprintf("client-%d", time.Now().UnixNano())
+		client := &presence.Client{
+			ID:          clientID,
+			Conn:        conn,
+			ConnectedAt: time.Now(),
+		}
+
+		// Read client-hello first.
+		ctx := r.Context()
+		_, data, err := conn.Read(ctx)
+		if err != nil {
+			conn.Close(websocket.StatusNormalClosure, "")
+			return
+		}
+		var hello struct {
+			Type                   string `json:"type"`
+			DeviceType             string `json:"device_type"`
+			NotificationPermission string `json:"notification_permission"`
+		}
+		if err := json.Unmarshal(data, &hello); err == nil && hello.Type == "client-hello" {
+			client.DeviceType = hello.DeviceType
+			client.NotificationPermission = hello.NotificationPermission
+		}
+
+		presenceTable.Add(client)
+		log.Printf("presence: client %s connected (%s, notif=%s)", clientID, client.DeviceType, client.NotificationPermission)
+
+		defer func() {
+			presenceTable.Remove(clientID)
+			conn.Close(websocket.StatusNormalClosure, "")
+			log.Printf("presence: client %s disconnected", clientID)
+		}()
+
+		// Read state updates until disconnect.
+		for {
+			_, data, err := conn.Read(ctx)
+			if err != nil {
+				return
+			}
+			var msg struct {
+				Type              string  `json:"type"`
+				Visibility        string  `json:"visibility"`
+				Focused           bool    `json:"focused"`
+				SelectedSessionID string  `json:"selected_session_id"`
+				LastInteraction   float64 `json:"last_interaction"`
+				Permission        string  `json:"permission"`
+			}
+			if err := json.Unmarshal(data, &msg); err != nil {
+				continue
+			}
+			switch msg.Type {
+			case "client-state":
+				presenceTable.Update(clientID, presence.ClientState{
+					Visibility:        msg.Visibility,
+					Focused:           msg.Focused,
+					SelectedSessionID: msg.SelectedSessionID,
+					LastInteraction:   msg.LastInteraction,
+				})
+			case "notif-permission":
+				presenceTable.SetPermission(clientID, msg.Permission)
+			}
+		}
+	})
 
 	// ── SSE Events ──
 
