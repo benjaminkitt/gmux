@@ -1,0 +1,148 @@
+---
+title: Changelog
+description: User-facing highlights for each gmux release.
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+<Aside type="tip">
+Full commit-level changelogs are on each [GitHub Release](https://github.com/gmuxapp/gmux/releases). This page tracks user-facing highlights only.
+</Aside>
+
+## Install / Update
+
+It's always safe to update while sessions are running. Sessions reconnect automatically.
+
+<Tabs>
+  <TabItem label="macOS (Homebrew)">
+    ```bash
+    brew install gmuxapp/tap/gmux
+    ```
+  </TabItem>
+  <TabItem label="Linux">
+    ```bash
+    curl -sSfL https://gmux.app/install.sh | sh
+    ```
+    [What does this script do?](/install.sh)
+  </TabItem>
+</Tabs>
+
+Or download binaries directly from [GitHub Releases](https://github.com/gmuxapp/gmux/releases).
+
+---
+
+## v0.4.7
+
+### Install
+
+- **Linux support.** `curl -sSfL https://gmux.app/install.sh | sh` detects OS and architecture, downloads from GitHub Releases, and verifies SHA-256 checksums.
+- **Auto-update notifications.** gmux checks for new releases in the background and shows them in the sidebar and CLI. No latency impact, no nagging.
+
+### Website
+
+- **Changelog on the docs site.** You're looking at it.
+
+## v0.4.4
+
+### Reliability
+
+- **Working indicator no longer gets stuck.** Pi's `aborted` (Esc) and `error` stop reasons are now handled; previously only `stop` cleared the indicator.
+- **Session titles appear reliably.** Fixed a race between the file monitor and SSE subscriber that could silently overwrite title and status updates.
+- **`/name` no longer clears working state.** Store updates are now atomic (new `Store.Update` method), preventing concurrent goroutines from clobbering each other's fields.
+- **Seamless daemon upgrade.** `gmux` detects version mismatches with the running daemon and replaces it automatically. Homebrew installs restart the daemon in the background during `brew upgrade`.
+
+### Terminal
+
+- **Scroll-to-bottom after reconnect.** Switching sessions no longer pins the view to old scrollback content.
+
+### Paste
+
+- **Proper paste handling.** Pasted text is sent correctly to the terminal.
+
+## v0.4.3
+
+### Mobile
+
+v0.4.3 rounds out the mobile terminal keyboard. The toolbar gains an **Alt modifier button** that works identically to Ctrl: arm it, type a key, send the escape-prefixed sequence. Holding **← or →** now repeats the arrow at iOS key-repeat speed; keep holding and it shifts into word-navigation mode, lighting up the Ctrl button as a visual cue. A **background-activity dot** appears on the hamburger menu when another session is busy (blue) or has unread output (yellow). Several smaller fixes: Backspace now correctly sends Ctrl+H when Ctrl is armed, Esc refocuses the terminal after sending, and the End scroll button is taller to match the toolbar.
+
+## v0.4.1
+
+### Terminal
+
+- **Serialized terminal writes.** Xterm writes and resizes are queued so the async parser never races with resize (fixes image addon + resize glitches).
+- **Stable fit measurement.** Terminal size is now measured from the shell viewport directly instead of relying on FitAddon's container measurement, which was affected by terminal content, scrollbars, and sidebar state.
+- **Unified resize model.** `terminal_resize` event replaces the old `resize_state` / `claim_resize` protocol. Resize pill is derived from viewport vs PTY size mismatch.
+- **Connect takes over resize.** Opening the UI on a device automatically sizes the terminal to fit, instead of starting passive.
+
+### Mobile
+
+- **Tap to focus.** Tapping the terminal opens the soft keyboard on mobile (works around xterm's hidden textarea not triggering keyboard activation).
+- **Keyboard-aware layout.** The app tracks `visualViewport` height so the terminal resizes above the on-screen keyboard instead of being covered by it.
+- **Passive panning.** When a session is sized for another device, drag to pan the oversized terminal in the browser. Tap still focuses.
+- **Accessory bar keeps keyboard open.** Tapping esc, tab, ctrl, arrows, or enter no longer dismisses the soft keyboard.
+
+### Developer experience
+
+- **Dev environment.** `scripts/dev.sh` starts an isolated dev instance with vite HMR, Go file watching, and Tailscale access on a separate port.
+
+## v0.4.0
+
+### Breaking changes
+
+- **`gmuxd` is now subcommand-based.** Run `gmuxd start`, `gmuxd shutdown`, `gmuxd version`, or `gmuxd help`. Bare `gmuxd` now prints help instead of starting the daemon.
+- **`gmuxd start` is now strict by default.** If another daemon is already running, it fails unless you pass `--replace`.
+
+## v0.3.0
+
+Sidebar redesign, file attribution fixes, integration tests.
+
+- **Sidebar split into live + resumable sections.** Live sessions at top, "Resume previous" collapsible drawer for resumable sessions.
+- **Simplified close button.** Always ×; live sessions kill, resumable sessions dismiss.
+- **Stale session cleanup.** Dead runners detected and cleaned up automatically.
+- **File attribution fixes.** Single-candidate attribution now works correctly for pi. Title derived from first user message even when the tool creates the file before user input.
+- **Title from first user message.** Adapters no longer emit title events on every message; initial title set once via file parsing.
+- **`close_action` removed.** Field was redundant; frontend derives behavior from `session.alive`.
+- **`CommandTitler` interface.** Optional adapter capability for custom fallback titles (shell shows `pytest -x` instead of "shell").
+- **WebGL terminal renderer.** Switched from canvas to WebGL for better performance.
+- **Terminal resize handoff polish.** The "sized for another device" hint is now a compact floating pill and no longer affects terminal height when taking resize ownership.
+- **Integration tests.** End-to-end tests for pi, claude, codex, and shell that launch real tools through gmuxd.
+- Fixed macOS "app is damaged" Gatekeeper prompt.
+
+## v0.2.4
+
+- File attribution refactored into adapter interface (`FileAttributor`).
+- Codex adapter now attributes session files.
+
+## v0.2.3
+
+- Fixed Homebrew tap (was empty after cleanup).
+
+## v0.2.2
+
+- Switched Homebrew distribution from cask to formula (install command unchanged).
+- Fixed adapter title being lost after session resume.
+- Added analytics to website (cookieless, no banner).
+
+## v0.2.1
+
+State management rearchitecture. Session state flows through a single path (Register) instead of multiple creation paths racing. Frontend is a pure projection of backend state with no optimistic updates.
+
+- Fixed resume race conditions (duplicate sessions, stale sockets, premature terminal attach).
+- Dismissed sessions stay dismissed across scanner cycles.
+- Dead sessions no longer auto-selected.
+- Status labels null by default, shown only when informative.
+- Chrome app-mode launch fixed on macOS (direct binary call instead of `open -a`).
+- New docs: state management, session schema.
+
+## v0.2.0
+
+- **Claude Code and Codex adapters** with session file parsing, live status, and resume.
+- **Resumable sessions.** Sessions transition between alive and resumable states seamlessly.
+- Empty state redesign with launcher buttons.
+- Fixed Chrome app-mode flag passing on macOS.
+- Resume race conditions and dismissed session reappearance fixed.
+- `Resumable` and `CloseAction` derived from adapter capabilities, not hardcoded.
+
+## v0.1.0
+
+Initial release.

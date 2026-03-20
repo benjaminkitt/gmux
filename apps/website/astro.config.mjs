@@ -17,6 +17,7 @@ export default defineConfig({
       ],
       customCss: ['./src/styles/custom.css'],
       sidebar: [
+        { label: 'Changelog', slug: 'changelog' },
         {
           label: 'Getting Started',
           items: [

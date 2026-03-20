@@ -118,7 +118,12 @@ body {
   font-weight: 500;
   line-height: 1;
   letter-spacing: 0.01em;
+  text-decoration: none;
   transform: translateY(2px);
+}
+
+.sidebar-badge:hover {
+  color: var(--text-primary);
 }
 
 .sidebar-badge-update {

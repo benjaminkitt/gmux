@@ -443,13 +443,20 @@ function Sidebar({
       <aside class={`sidebar ${open ? 'open' : ''}`}>
         <div class="sidebar-header">
           <div class="sidebar-logo">gmux</div>
-          {health?.update_available ? (
-            <a class="sidebar-badge sidebar-badge-update" href="https://gmux.app/quick-start/" target="_blank" title="Update available - safe to update while sessions are running">
-              {health.version} &rarr; {health.update_available}
+          {health?.version ? (
+            <a
+              class={`sidebar-badge${health.update_available ? ' sidebar-badge-update' : ''}`}
+              href="https://gmux.app/changelog/"
+              target="_blank"
+              title={health.update_available
+                ? 'Update available - safe to update while sessions are running'
+                : `gmux ${health.version}`}
+            >
+              {health.update_available
+                ? <>{health.version} &rarr; {health.update_available}</>
+                : health.version}
             </a>
-          ) : (
-            <div class="sidebar-badge">{health?.version ?? ''}</div>
-          )}
+          ) : null}
           <LaunchButton className="sidebar-launch-btn" onLaunch={onClose} />
         </div>
         <div class="sidebar-scroll">

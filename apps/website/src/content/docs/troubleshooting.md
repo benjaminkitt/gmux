@@ -25,11 +25,14 @@ Common causes:
 gmuxd start
 ```
 
-## Version mismatch after update
+## Updating
 
-After updating gmux, you may briefly see stale sessions or unexpected behavior if the old daemon is still running. This is handled automatically:
+It's safe to update gmux while sessions are running — they reconnect automatically. gmux checks for new releases in the background and notifies you in the dashboard sidebar and when you run `gmux` with no arguments.
+
+After updating, the old daemon is replaced automatically:
 
 - **Homebrew**: the postflight hook restarts the daemon during install
+- **`curl | sh` installer**: restarts the daemon if it was running
 - **Manual installs**: the next `gmux` invocation detects the version mismatch and replaces the daemon
 
 To force a restart manually: `gmuxd shutdown && gmuxd start`.

@@ -3,17 +3,23 @@ title: Quick Start
 description: Install gmux and launch your first session in under a minute.
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
 ## Install
 
-**macOS** (Homebrew):
-```bash
-brew install gmuxapp/tap/gmux
-```
-
-**Linux** (or macOS without Homebrew):
-```bash
-curl -sSfL https://gmux.app/install.sh | sh
-```
+<Tabs>
+  <TabItem label="macOS (Homebrew)">
+    ```bash
+    brew install gmuxapp/tap/gmux
+    ```
+  </TabItem>
+  <TabItem label="Linux">
+    ```bash
+    curl -sSfL https://gmux.app/install.sh | sh
+    ```
+    [What does this script do?](/install.sh)
+  </TabItem>
+</Tabs>
 
 Or download both binaries (`gmuxd` + `gmux`) from [GitHub Releases](https://github.com/gmuxapp/gmux/releases).
 
