@@ -345,41 +345,38 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		cancel: cancel,
 	}
 
-	// Replay scrollback before adding to live clients.
-	// This is done under the lock to ensure no output is missed between
-	// snapshot and registration — the client sees the full history plus
-	// all subsequent live data with no gap.
+	// Replay scrollback, send the reset frame, then register for live data.
+	// All three steps happen under s.mu so that readPTY cannot send live
+	// data to this client before the snapshot frame. The write goes to a
+	// Unix socket (kernel buffer ≥ 208KB on Linux), so the lock is held
+	// for at most a single sendmsg syscall (~128KB snapshot).
+	//
+	// Ordering guarantee: snapshot is always the first message the client
+	// receives, followed by any live data from subsequent readPTY cycles.
+	//
+	// Sequence: BSU → reset(scroll region, cursor home, erase all) → scrollback → ESU
 	s.mu.Lock()
 	snapshot := s.scrollback.Snapshot()
+	bsu := []byte("\x1b[?2026h")                       // Begin Synchronized Update
+	resetSeq := []byte("\x1b[r\x1b[H\x1b[2J\x1b[3J")   // Reset scroll region + cursor home + erase display + erase scrollback
+	esu := []byte("\x1b[?2026l")                       // End Synchronized Update
+	frame := make([]byte, 0, len(bsu)+len(resetSeq)+len(snapshot)+len(esu))
+	frame = append(frame, bsu...)
+	frame = append(frame, resetSeq...)
+	frame = append(frame, snapshot...)
+	frame = append(frame, esu...)
+	if err := client.write(websocket.MessageBinary, frame); err != nil {
+		s.mu.Unlock()
+		conn.Close(websocket.StatusNormalClosure, "")
+		cancel()
+		return
+	}
 	s.clients[client] = struct{}{}
 	s.mu.Unlock()
 
 	// Client connected — they'll see the scrollback, so clear unread
 	if s.state != nil {
 		s.state.SetUnread(false)
-	}
-
-	// Always send reset frame — even with empty scrollback.
-	// This ensures switching to a new/empty session clears previous content.
-	// Wrapped in DEC 2026 synchronized output so xterm renders atomically.
-	// Sequence: BSU → reset(scroll region, cursor home, erase all) → scrollback → ESU
-	{
-		bsu := []byte("\x1b[?2026h")                     // Begin Synchronized Update
-		resetSeq := []byte("\x1b[r\x1b[H\x1b[2J\x1b[3J") // Reset scroll region + cursor home + erase display + erase scrollback
-		esu := []byte("\x1b[?2026l")                     // End Synchronized Update
-		frame := make([]byte, 0, len(bsu)+len(resetSeq)+len(snapshot)+len(esu))
-		frame = append(frame, bsu...)
-		frame = append(frame, resetSeq...)
-		frame = append(frame, snapshot...)
-		frame = append(frame, esu...)
-		if err := client.write(websocket.MessageBinary, frame); err != nil {
-			s.mu.Lock()
-			delete(s.clients, client)
-			s.mu.Unlock()
-			conn.Close(websocket.StatusNormalClosure, "")
-			cancel()
-			return
-		}
 	}
 
 	defer func() {
