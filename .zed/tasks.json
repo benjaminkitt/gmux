@@ -1,16 +1,21 @@
 [
   {
-    "label": "dev: start",
+    "label": "dev start",
     "command": "./scripts/dev.sh",
     "allow_concurrent_runs": false
   },
   {
-    "label": "build: release",
+    "label": "dev start: website",
+    "command": "moon run website:dev",
+    "allow_concurrent_runs": false
+  },
+  {
+    "label": "build",
     "command": "./scripts/build.sh",
     "allow_concurrent_runs": false
   },
   {
-    "label": "test: all",
+    "label": "test all",
     "command": "pnpm test && cd cli/gmux && go test ./... && cd ../../services/gmuxd && go test ./... && cd ../../packages/adapter && go test ./...",
     "allow_concurrent_runs": false,
     "show_command": false
