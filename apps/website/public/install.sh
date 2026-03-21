@@ -51,6 +51,45 @@ resolve_version() {
   echo "$v"
 }
 
+install_desktop_entry() {
+  data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
+  apps_dir="${data_home}/applications"
+  icon_dir="${data_home}/icons/hicolor/scalable/apps"
+
+  mkdir -p "$apps_dir" "$icon_dir"
+
+  # Icon (terminal prompt SVG)
+  cat > "${icon_dir}/gmux.svg" << 'ICON'
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="6" fill="#0f141a"/>
+  <polyline points="8,10 16,16 8,22" fill="none" stroke="#49b8b8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="18" y1="22" x2="25" y2="22" stroke="#49b8b8" stroke-width="2.4" stroke-linecap="round"/>
+</svg>
+ICON
+
+  # Desktop entry
+  cat > "${apps_dir}/gmux.desktop" << DESKTOP
+[Desktop Entry]
+Name=gmux
+Comment=Terminal session manager
+GenericName=Terminal Manager
+Exec=${INSTALL_DIR}/gmux
+Icon=gmux
+Terminal=false
+Type=Application
+Categories=Development;TerminalEmulator;
+Keywords=terminal;tmux;session;
+StartupNotify=false
+DESKTOP
+
+  # Update desktop database if available (not critical)
+  if command -v update-desktop-database > /dev/null 2>&1; then
+    update-desktop-database "$apps_dir" 2>/dev/null || true
+  fi
+
+  echo "Installed desktop entry and icon"
+}
+
 main() {
   need curl; need uname
 
@@ -92,6 +131,11 @@ main() {
   install -m 755 "${tmpdir}/gmuxd" "${INSTALL_DIR}/gmuxd"
 
   echo "Installed gmux and gmuxd to ${INSTALL_DIR}"
+
+  # Install .desktop entry and icon on Linux
+  if [ "$os" = "linux" ]; then
+    install_desktop_entry
+  fi
 
   # If gmuxd was already running, restart it
   # Running sessions are not affected, they reconnect automatically.
