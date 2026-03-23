@@ -1,22 +1,55 @@
 name: Release
 
 on:
+  # Manual releases: push a tag directly.
   push:
     tags:
       - "v*"
+
+  # Automated releases: merge the release/next PR.
+  pull_request:
+    types: [closed]
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
   release:
+    # Run on tag push, OR when the release/next PR is merged.
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.pull_request.merged && github.event.pull_request.head.ref == 'release/next')
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            # Tag push: version is the tag itself.
+            echo "version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            # PR merge: extract version from PR title ("release: v0.6.0").
+            title="${{ github.event.pull_request.title }}"
+            version=$(echo "$title" | grep -oP 'v\d+\.\d+\.\d+')
+            if [[ -z "$version" ]]; then
+              echo "::error::Could not extract version from PR title '$title'"
+              exit 1
+            fi
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+
+            # Create the tag (this is safe since GITHUB_TOKEN events don't
+            # re-trigger workflows, avoiding loops).
+            git tag "$version"
+            git push origin "$version"
+          fi
 
       - uses: actions/setup-go@v5
         with:
@@ -37,6 +70,7 @@ jobs:
           version: "~> v2"
           args: release --clean --release-notes=RELEASE_NOTES.md
         env:
+          GORELEASER_CURRENT_TAG: ${{ steps.version.outputs.version }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           GOWORK: ${{ github.workspace }}/go.work
