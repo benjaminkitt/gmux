@@ -1,0 +1,52 @@
+name: Version
+
+# Open/update a release PR when changesets land on main.
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".changesets/*.md"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for changesets
+        id: check
+        run: |
+          count=$(find .changesets -name '*.md' ! -name 'README.md' | wc -l)
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+
+      - name: Consume changesets
+        if: steps.check.outputs.count != '0'
+        id: version
+        run: |
+          output=$(bash scripts/version.sh)
+          version=$(echo "$output" | head -1 | awk '{print $1}')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "$output"
+
+      - name: Create release PR
+        if: steps.check.outputs.count != '0'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "release: ${{ steps.version.outputs.version }}"
+          title: "release: ${{ steps.version.outputs.version }}"
+          body: |
+            Consuming pending changesets for **${{ steps.version.outputs.version }}**.
+
+            Review the changelog entry, edit if needed, then merge.
+            Merging creates the `${{ steps.version.outputs.version }}` tag and triggers the release build.
+          branch: release/${{ steps.version.outputs.version }}
+          delete-branch: true
+
+  # When the release PR itself merges (deleting changeset files), this
+  # workflow fires again. The check step finds 0 changesets and skips.
