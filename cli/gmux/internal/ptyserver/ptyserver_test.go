@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -177,7 +178,24 @@ func TestPTYServerInput(t *testing.T) {
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")
 
-	// Drain any initial prompt output
+	// Read all WS messages via a background goroutine. Using context-based
+	// read timeouts with nhooyr/websocket closes the connection on cancel,
+	// so we use a long-lived reader and poll the accumulated buffer instead.
+	var mu sync.Mutex
+	var got []byte
+	go func() {
+		for {
+			_, data, err := conn.Read(ctx)
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			got = append(got, data...)
+			mu.Unlock()
+		}
+	}()
+
+	// Wait for the initial prompt to settle before sending input.
 	time.Sleep(100 * time.Millisecond)
 
 	// Send input
@@ -186,31 +204,26 @@ func TestPTYServerInput(t *testing.T) {
 		t.Fatalf("write input: %v", err)
 	}
 
-	// Read output until we see "got:hello" or timeout
-	var got []byte
+	// Poll until we see "got:hello" or timeout.
 	deadline := time.After(3 * time.Second)
 	for {
-		select {
-		case <-deadline:
-			goto check
-		default:
-		}
-		readCtx, readCancel := context.WithTimeout(ctx, 500*time.Millisecond)
-		_, data, err := conn.Read(readCtx)
-		readCancel()
-		if err != nil {
-			continue
-		}
-		got = append(got, data...)
-		if contains(got, "got:hello") {
+		time.Sleep(50 * time.Millisecond)
+		mu.Lock()
+		found := contains(got, "got:hello")
+		mu.Unlock()
+		if found {
 			break
 		}
+		select {
+		case <-deadline:
+			mu.Lock()
+			t.Errorf("expected 'got:hello' in output, got: %q", string(got))
+			mu.Unlock()
+			goto done
+		default:
+		}
 	}
-check:
-	if !contains(got, "got:hello") {
-		t.Errorf("expected 'got:hello' in output, got: %q", string(got))
-	}
-
+done:
 	<-srv.Done()
 }
 
@@ -369,6 +382,121 @@ func TestPTYServerSnapshotBeforeLiveData(t *testing.T) {
 		}
 		if !r.firstBSU {
 			t.Errorf("client %d: first message did not start with BSU (snapshot frame); got live data before snapshot", i)
+		}
+	}
+}
+
+// TestPTYServerResizeDedup verifies that sending a resize with the same
+// dimensions as the current PTY does NOT deliver SIGWINCH to the child,
+// while a resize with different dimensions does.
+func TestPTYServerResizeDedup(t *testing.T) {
+	sockPath := filepath.Join(t.TempDir(), "test.sock")
+
+	// The child uses a SIGWINCH trap that writes a marker to stdout.
+	// This lets us observe whether SIGWINCH was actually delivered.
+	srv, err := New(Config{
+		Command: []string{"bash", "-c", `
+			trap 'echo WINCH_FIRED' SIGWINCH
+			echo ready
+			# Keep running so we can send resize messages.
+			while true; do sleep 0.1; done
+		`},
+		Cwd:        "/tmp",
+		SocketPath: sockPath,
+		Cols:       80,
+		Rows:       25,
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+	defer srv.Shutdown()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	conn, _, err := websocket.Dial(ctx, "ws://localhost/", &websocket.DialOptions{
+		HTTPClient: &http.Client{
+			Transport: &http.Transport{
+				DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+					return net.Dial("unix", sockPath)
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close(websocket.StatusNormalClosure, "")
+
+	// Read all WS messages into a shared buffer via a background goroutine.
+	var mu sync.Mutex
+	var allOutput []byte
+	go func() {
+		for {
+			_, data, err := conn.Read(ctx)
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			allOutput = append(allOutput, data...)
+			mu.Unlock()
+		}
+	}()
+
+	// Wait until we see "ready" in the output, confirming the trap is set.
+	deadline := time.After(5 * time.Second)
+	for {
+		time.Sleep(50 * time.Millisecond)
+		mu.Lock()
+		ready := contains(allOutput, "ready")
+		mu.Unlock()
+		if ready {
+			break
+		}
+		select {
+		case <-deadline:
+			mu.Lock()
+			t.Fatalf("child never became ready, got: %q", allOutput)
+			mu.Unlock()
+		default:
+		}
+	}
+
+	// Send a resize with the SAME dimensions (80x25). This should NOT
+	// trigger SIGWINCH, so no "WINCH_FIRED" output should appear.
+	sameResize, _ := json.Marshal(ResizeMsg{Type: "resize", Cols: 80, Rows: 25})
+	if err := conn.Write(ctx, websocket.MessageText, sameResize); err != nil {
+		t.Fatalf("write same-size resize: %v", err)
+	}
+
+	// Give the child time to receive and process a SIGWINCH if one were sent.
+	time.Sleep(300 * time.Millisecond)
+	mu.Lock()
+	if contains(allOutput, "WINCH_FIRED") {
+		t.Error("same-size resize should not trigger SIGWINCH, but WINCH_FIRED was received")
+	}
+	mu.Unlock()
+
+	// Now send a resize with DIFFERENT dimensions. This should trigger SIGWINCH.
+	diffResize, _ := json.Marshal(ResizeMsg{Type: "resize", Cols: 120, Rows: 40})
+	if err := conn.Write(ctx, websocket.MessageText, diffResize); err != nil {
+		t.Fatalf("write different-size resize: %v", err)
+	}
+
+	deadline = time.After(3 * time.Second)
+	for {
+		time.Sleep(50 * time.Millisecond)
+		mu.Lock()
+		fired := contains(allOutput, "WINCH_FIRED")
+		mu.Unlock()
+		if fired {
+			return // success
+		}
+		select {
+		case <-deadline:
+			t.Error("different-size resize should trigger SIGWINCH, but WINCH_FIRED was not received")
+			return
+		default:
 		}
 	}
 }

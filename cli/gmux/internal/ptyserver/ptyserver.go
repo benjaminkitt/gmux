@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/creack/pty"
 	"github.com/gmuxapp/gmux/cli/gmux/internal/ringbuf"
@@ -50,9 +51,12 @@ type Server struct {
 	mu       sync.Mutex
 	clients  map[*wsClient]struct{}
 	localOut io.Writer // optional local terminal output sink
+	ptyCols  uint16    // last applied PTY cols (guarded by mu)
+	ptyRows  uint16    // last applied PTY rows (guarded by mu)
 
-	done chan struct{} // closed when child exits
-	err  error         // child exit error
+	done    chan struct{} // closed when child exits
+	ptyDone chan struct{} // closed when readPTY finishes draining
+	err     error        // child exit error
 }
 
 type wsClient struct {
@@ -144,7 +148,10 @@ func New(cfg Config) (*Server, error) {
 		adapter:    cfg.Adapter,
 		state:      cfg.State,
 		clients:    make(map[*wsClient]struct{}),
+		ptyCols:    cfg.Cols,
+		ptyRows:    cfg.Rows,
 		done:       make(chan struct{}),
+		ptyDone:    make(chan struct{}),
 	}
 
 	go s.readPTY()
@@ -414,19 +421,35 @@ func (s *Server) resize(msg ResizeMsg) {
 	if msg.Cols == 0 || msg.Rows == 0 {
 		return
 	}
-	pty.Setsize(s.ptmx, &pty.Winsize{
-		Cols: msg.Cols,
-		Rows: msg.Rows,
-		X:    msg.PixelWidth,
-		Y:    msg.PixelHeight,
-	})
 
-	// Send SIGWINCH to the child process group.
-	if s.cmd.Process != nil {
-		syscall.Kill(-s.cmd.Process.Pid, syscall.SIGWINCH)
+	// Check if the PTY size actually changed. Skipping redundant SIGWINCH
+	// prevents TUI apps from redrawing their entire screen unnecessarily,
+	// which is the main source of "rewrite the entire log" slowness on
+	// reconnect or duplicate resize events.
+	s.mu.Lock()
+	sizeChanged := msg.Cols != s.ptyCols || msg.Rows != s.ptyRows
+	if sizeChanged {
+		s.ptyCols = msg.Cols
+		s.ptyRows = msg.Rows
+	}
+	s.mu.Unlock()
+
+	if sizeChanged {
+		pty.Setsize(s.ptmx, &pty.Winsize{
+			Cols: msg.Cols,
+			Rows: msg.Rows,
+			X:    msg.PixelWidth,
+			Y:    msg.PixelHeight,
+		})
+
+		// Send SIGWINCH to the child process group.
+		if s.cmd.Process != nil {
+			syscall.Kill(-s.cmd.Process.Pid, syscall.SIGWINCH)
+		}
 	}
 
-	// Update runner session state — discovery/subscribe.go learns via SSE.
+	// Always update state and broadcast so all clients stay in sync,
+	// even if the PTY size didn't change (idempotent metadata update).
 	if s.state != nil {
 		s.state.SetTerminalSize(msg.Cols, msg.Rows)
 	}
@@ -457,58 +480,122 @@ func (s *Server) resize(msg ResizeMsg) {
 	}
 }
 
+// coalesceMaxBytes is the maximum accumulated data before forcing a flush,
+// even if the coalesce timer hasn't fired yet. Keeps latency bounded.
+const coalesceMaxBytes = 32 * 1024
+
+// coalesceInterval is how long readPTY waits for more data before flushing.
+// Chosen to be below one 60 fps frame (~16 ms) so the browser can still
+// render at full frame rate while dramatically reducing WS message count
+// during bursts (e.g. TUI redraws after SIGWINCH).
+const coalesceInterval = 8 * time.Millisecond
+
 func (s *Server) readPTY() {
-	buf := make([]byte, 4096)
-	for {
-		n, err := s.ptmx.Read(buf)
-		if n > 0 {
-			data := buf[:n]
+	defer close(s.ptyDone)
 
-			// All sessions parse OSC titles as a fallback title source.
-			if title := adapters.ParseOSCTitle(data); title != "" {
-				s.state.SetShellTitle(title)
-			}
+	buf := make([]byte, 32*1024)
+	var accum []byte
+	timer := time.NewTimer(coalesceInterval)
+	timer.Stop()
 
-			// Feed adapter monitor (cheap, no alloc expected)
-			if s.adapter != nil {
-				if status := s.adapter.Monitor(data); status != nil {
-					if status.Title != "" {
-						s.state.SetAdapterTitle(status.Title)
-						status.Title = "" // don't leak into status JSON
-					}
-					s.state.SetStatus(status)
+	flush := func() {
+		if len(accum) == 0 {
+			return
+		}
+		data := accum
+		accum = nil
+
+		// Process adapter/title hooks on the accumulated chunk.
+		if title := adapters.ParseOSCTitle(data); title != "" {
+			s.state.SetShellTitle(title)
+		}
+		if s.adapter != nil {
+			if status := s.adapter.Monitor(data); status != nil {
+				if status.Title != "" {
+					s.state.SetAdapterTitle(status.Title)
+					status.Title = ""
 				}
-			}
-
-			// Store in scrollback (under lock with broadcast to avoid gaps)
-			s.mu.Lock()
-			s.scrollback.Write(data)
-			localOut := s.localOut
-			clients := make([]*wsClient, 0, len(s.clients))
-			for c := range s.clients {
-				clients = append(clients, c)
-			}
-			hasRemoteClients := len(clients) > 0
-			s.mu.Unlock()
-
-			// Mark unread when output arrives with no remote viewers
-			if !hasRemoteClients && s.state != nil {
-				s.state.SetUnread(true)
-			}
-
-			// Write to local terminal (if attached)
-			if localOut != nil {
-				localOut.Write(data)
-			}
-
-			for _, c := range clients {
-				if err := c.write(websocket.MessageBinary, data); err != nil {
-					c.cancel()
-				}
+				s.state.SetStatus(status)
 			}
 		}
-		if err != nil {
-			return // PTY closed
+
+		// Store in scrollback and snapshot client list atomically.
+		s.mu.Lock()
+		s.scrollback.Write(data)
+		localOut := s.localOut
+		clients := make([]*wsClient, 0, len(s.clients))
+		for c := range s.clients {
+			clients = append(clients, c)
+		}
+		hasRemoteClients := len(clients) > 0
+		s.mu.Unlock()
+
+		if !hasRemoteClients && s.state != nil {
+			s.state.SetUnread(true)
+		}
+
+		if localOut != nil {
+			localOut.Write(data)
+		}
+
+		for _, c := range clients {
+			if err := c.write(websocket.MessageBinary, data); err != nil {
+				c.cancel()
+			}
+		}
+	}
+
+	readCh := make(chan []byte, 4)
+	readDone := make(chan error, 1)
+
+	// Separate goroutine for blocking PTY reads so we can select on
+	// both incoming data and the coalesce timer.
+	go func() {
+		for {
+			n, err := s.ptmx.Read(buf)
+			if n > 0 {
+				chunk := make([]byte, n)
+				copy(chunk, buf[:n])
+				readCh <- chunk
+			}
+			if err != nil {
+				readDone <- err
+				return
+			}
+		}
+	}()
+
+	for {
+		select {
+		case chunk := <-readCh:
+			accum = append(accum, chunk...)
+			if len(accum) >= coalesceMaxBytes {
+				timer.Stop()
+				flush()
+			} else {
+				// Reset the coalesce timer. On the first chunk this
+				// starts the window; on subsequent chunks it extends it.
+				timer.Reset(coalesceInterval)
+			}
+
+		case <-timer.C:
+			flush()
+
+		case <-readDone:
+			timer.Stop()
+			// Drain any remaining chunks that were queued before the
+			// reader goroutine signaled completion.
+		drain:
+			for {
+				select {
+				case chunk := <-readCh:
+					accum = append(accum, chunk...)
+				default:
+					break drain
+				}
+			}
+			flush()
+			return
 		}
 	}
 }
@@ -516,6 +603,12 @@ func (s *Server) readPTY() {
 func (s *Server) waitChild() {
 	s.err = s.cmd.Wait()
 	close(s.done)
+
+	// Wait for readPTY to finish draining all buffered PTY output before
+	// closing client connections. Without this, the coalesce buffer may
+	// still hold the child's final output when we close the WebSocket,
+	// causing data loss.
+	<-s.ptyDone
 
 	s.mu.Lock()
 	for c := range s.clients {

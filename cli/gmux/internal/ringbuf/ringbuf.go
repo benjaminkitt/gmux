@@ -27,9 +27,11 @@ func (r *RingBuf) Write(data []byte) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	for _, b := range data {
-		r.buf[r.pos] = b
-		r.pos++
+	for len(data) > 0 {
+		avail := r.size - r.pos
+		n := copy(r.buf[r.pos:r.pos+avail], data)
+		r.pos += n
+		data = data[n:]
 		if r.pos >= r.size {
 			r.pos = 0
 			r.full = true
