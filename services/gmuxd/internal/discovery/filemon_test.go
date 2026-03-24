@@ -231,7 +231,7 @@ func TestPiAbortClearsWorking(t *testing.T) {
 	}
 }
 
-func TestPiErrorClearsWorking(t *testing.T) {
+func TestPiSingleErrorKeepsWorking(t *testing.T) {
 	fm, s, dir := setupPiFileMonitor(t)
 	path := filepath.Join(dir, "test.jsonl")
 
@@ -244,13 +244,47 @@ func TestPiErrorClearsWorking(t *testing.T) {
 		t.Fatal("expected working=true after user message")
 	}
 
-	// Error → idle.
+	// Single error → no state change (retry expected).
 	simulateFileWrite(t, fm, "sess-pi", path,
 		`{"type":"message","id":"a1","message":{"role":"assistant","stopReason":"error","content":[]}}`,
 	)
 	sess, _ = s.Get("sess-pi")
-	if sess.Status != nil {
-		t.Fatalf("expected nil status (idle) after error, got %+v", sess.Status)
+	if sess.Status == nil || !sess.Status.Working {
+		t.Fatal("expected working=true after single error (retry pending)")
+	}
+}
+
+func TestPiExhaustedErrorSetsErrorState(t *testing.T) {
+	fm, s, dir := setupPiFileMonitor(t)
+	path := filepath.Join(dir, "test.jsonl")
+
+	simulateFileWrite(t, fm, "sess-pi", path,
+		`{"type":"session","id":"test-123","cwd":"/home/user/dev/project","timestamp":"2026-03-19T10:00:00Z"}`,
+		`{"type":"message","id":"u1","message":{"role":"user","content":[{"type":"text","text":"fix bug"}]}}`,
+	)
+
+	// 4 consecutive errors = retries exhausted → error state (not working, error=true).
+	simulateFileWrite(t, fm, "sess-pi", path,
+		`{"type":"message","id":"a1","message":{"role":"assistant","stopReason":"error","content":[]}}`,
+	)
+	simulateFileWrite(t, fm, "sess-pi", path,
+		`{"type":"message","id":"a2","message":{"role":"assistant","stopReason":"error","content":[]}}`,
+	)
+	simulateFileWrite(t, fm, "sess-pi", path,
+		`{"type":"message","id":"a3","message":{"role":"assistant","stopReason":"error","content":[]}}`,
+	)
+	simulateFileWrite(t, fm, "sess-pi", path,
+		`{"type":"message","id":"a4","message":{"role":"assistant","stopReason":"error","content":[]}}`,
+	)
+	sess, _ := s.Get("sess-pi")
+	if sess.Status == nil {
+		t.Fatal("expected error status after exhausted retries, got nil")
+	}
+	if sess.Status.Working {
+		t.Error("expected working=false after exhausted retries")
+	}
+	if !sess.Status.Error {
+		t.Error("expected error=true after exhausted retries")
 	}
 }
 
@@ -371,6 +405,48 @@ func TestPiFullLifecycle(t *testing.T) {
 	sess, _ = s.Get("sess-pi")
 	if sess.Status != nil {
 		t.Fatalf("expected idle after abort, got %+v", sess.Status)
+	}
+}
+
+func TestPiExhaustedErrorRecovery(t *testing.T) {
+	fm, s, dir := setupPiFileMonitor(t)
+	path := filepath.Join(dir, "test.jsonl")
+
+	simulateFileWrite(t, fm, "sess-pi", path,
+		`{"type":"session","id":"test-123","cwd":"/home/user/dev/project","timestamp":"2026-03-19T10:00:00Z"}`,
+		`{"type":"message","id":"u1","message":{"role":"user","content":[{"type":"text","text":"fix bug"}]}}`,
+	)
+
+	// Exhaust retries.
+	for i := range 4 {
+		simulateFileWrite(t, fm, "sess-pi", path,
+			`{"type":"message","id":"e`+string(rune('1'+i))+`","message":{"role":"assistant","stopReason":"error","content":[]}}`,
+		)
+	}
+	sess, _ := s.Get("sess-pi")
+	if sess.Status == nil || !sess.Status.Error {
+		t.Fatal("expected error state after exhausted retries")
+	}
+
+	// User sends new message → error clears, working resumes.
+	simulateFileWrite(t, fm, "sess-pi", path,
+		`{"type":"message","id":"u2","message":{"role":"user","content":[{"type":"text","text":"continue"}]}}`,
+	)
+	sess, _ = s.Get("sess-pi")
+	if sess.Status == nil || !sess.Status.Working {
+		t.Fatal("expected working after user message")
+	}
+	if sess.Status.Error {
+		t.Fatal("expected error=false after user message clears error state")
+	}
+
+	// Agent succeeds this time.
+	simulateFileWrite(t, fm, "sess-pi", path,
+		`{"type":"message","id":"a5","message":{"role":"assistant","stopReason":"stop","content":[{"type":"text","text":"Done."}]}}`,
+	)
+	sess, _ = s.Get("sess-pi")
+	if sess.Status != nil {
+		t.Fatalf("expected nil status after stop, got %+v", sess.Status)
 	}
 }
 

@@ -363,6 +363,11 @@ body {
   background: var(--unread);
 }
 
+.session-dot-indicator.error {
+  background: var(--status-error);
+  animation: subtle-pulse 2.5s ease-in-out infinite;
+}
+
 /* Arrival pulse — plays once when a dot transitions from working→unread.
    Premove (squish inward) → burst (overshoot outward with glow) → settle. */
 .session-dot-indicator.arriving {
@@ -588,6 +593,7 @@ body {
 }
 
 .session-dot.working { background: var(--accent); }
+.session-dot.error   { background: var(--status-error); }
 .session-dot.idle    { background: var(--text-muted); }
 .session-dot.unread  { background: var(--unread); }
 
@@ -690,6 +696,7 @@ body {
 }
 
 .main-header-status.working { color: var(--accent); }
+.main-header-status.error   { color: var(--status-error); }
 
 .terminal-shell {
   flex: 1;
@@ -1132,6 +1139,7 @@ body {
      Pseudo-elements don't expand the hit-box, so taps outside the button
      border still pass through correctly. */
   .mobile-bottom-action.menu-btn.bg-working::after,
+  .mobile-bottom-action.menu-btn.bg-error::after,
   .mobile-bottom-action.menu-btn.bg-unread::after {
     content: '';
     position: absolute;
@@ -1145,7 +1153,8 @@ body {
     box-shadow: 0 0 0 1.5px var(--bg-base);
   }
   .mobile-bottom-action.menu-btn.bg-working::after { background: var(--accent); }
-  .mobile-bottom-action.menu-btn.bg-unread::after  { background: var(--unread); }
+  .mobile-bottom-action.menu-btn.bg-error::after   { background: var(--status-error); }
+  .mobile-bottom-action.menu-btn.bg-unread::after   { background: var(--unread); }
 
   /* Arrival pulse on the hamburger badge — reuses the same keyframes timing */
   .mobile-bottom-action.menu-btn.bg-arriving::after {
@@ -1226,7 +1235,8 @@ body {
   .mobile-bottom-action.menu-btn.bg-arriving::after {
     animation: none;
   }
-  .session-dot-indicator.working {
+  .session-dot-indicator.working,
+  .session-dot-indicator.error {
     animation: none;
   }
 }
