@@ -27,6 +27,9 @@ cli/gmux/gmux
 .env
 .env.*
 !.env.example
+
+# local files (*.local.* pattern)
+*.local.*
 test-results/
 tests/pi-adapter/pi-adapter
 gmux gmuxd
