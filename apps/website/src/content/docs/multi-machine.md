@@ -33,22 +33,15 @@ tailscale = false
 
 ## Devcontainer auto-discovery
 
-If a project directory contains `.devcontainer/devcontainer.json`, gmuxd discovers the running container automatically using Docker labels. No manual peer configuration is needed.
-
-The [gmux devcontainer Feature](https://github.com/gmuxapp/features) installs gmux into any devcontainer:
+Add one line to your `devcontainer.json` and sessions from inside the container appear in your dashboard automatically:
 
 ```json
-{
-  "image": "mcr.microsoft.com/devcontainers/base:debian",
-  "features": {
-    "ghcr.io/gmuxapp/features/gmux": {}
-  }
+"features": {
+  "ghcr.io/gmuxapp/features/gmux": {}
 }
 ```
 
-The feature sets `GMUXD_LISTEN=0.0.0.0` so gmuxd accepts connections on the Docker bridge, and generates a bearer token on first start. The host gmuxd reads the token from the container and connects as a peer.
-
-Once connected, the container's sessions appear in the sidebar and on the [project hub](/using-the-ui#project-hub) alongside local sessions, with a host breadcrumb showing the topology (e.g. `workstation > alpine-dev`). Launching from the hub's per-folder **+** button routes the session to the correct machine.
+The host gmuxd detects the container via Docker events, reads the auth token, and connects over the Docker bridge. See the [Devcontainers](/devcontainers) guide for setup, options, and details.
 
 ## Manual peers
 

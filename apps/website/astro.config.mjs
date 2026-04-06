@@ -25,6 +25,7 @@ export default defineConfig({
           label: 'Guides',
           items: [
             { label: 'Using the UI', slug: 'using-the-ui' },
+            { label: 'Devcontainers', slug: 'devcontainers' },
             { label: 'Multi-Machine Sessions', slug: 'multi-machine' },
             { label: 'Configuration', slug: 'configuration' },
             { label: 'Remote Access', slug: 'remote-access' },
