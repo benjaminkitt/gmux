@@ -123,4 +123,4 @@ enabled = true
 hostname = "project-a"
 ```
 
-This means switching between browser tabs per project. See [Peer Discovery & Aggregation](/planned/peer-discovery-aggregation) for the planned single-dashboard solution.
+To see sessions from all containers in a single dashboard instead, set up [Multi-Machine Sessions](/multi-machine) with one gmuxd as the hub.

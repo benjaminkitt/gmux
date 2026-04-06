@@ -244,7 +244,7 @@ Navigating to a session updates the URL bar. Clicking a session in the sidebar p
 
 ### Forward compatibility with aggregation
 
-When [peer aggregation](/planned/peer-discovery-aggregation) is added, a host prefix slots in before the project:
+With [peer aggregation](/multi-machine), a host prefix slots in before the project:
 
 ```
 /gmux/pi/fix-auth-bug          → local session
