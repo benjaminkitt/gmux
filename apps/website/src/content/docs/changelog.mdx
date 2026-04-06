@@ -35,6 +35,92 @@ Or download binaries directly from [GitHub Releases](https://github.com/gmuxapp/
 
 ---
 
+## v1.0.0
+
+Prefix any command with `gmux` and it shows up in a live browser dashboard. Watch what every agent is doing, steer them from your phone, and aggregate sessions from every machine, container, and VM into one place.
+
+This release stabilizes the core and adds multi-machine support.
+
+### Multi-machine sessions
+
+gmux now aggregates sessions across machines. Pick one gmuxd as your dashboard (the hub), and it connects outward to other instances (spokes) to merge their sessions into a single UI. The browser only talks to the hub.
+
+- **Tailscale auto-discovery.** Enable Tailscale on two machines and they find each other automatically. gmuxd subscribes to tailnet changes and reacts immediately when devices come online. No manual peer configuration, no token exchange. Discovery results are cached so known peers reconnect instantly on restart.
+- **Devcontainer auto-discovery.** Add the [gmux devcontainer Feature](https://github.com/gmuxapp/features) to any container and gmuxd discovers it via Docker events. Sessions appear in the sidebar with a topology breadcrumb (`workstation > alpine-dev`).
+- **Manual peers.** For machines not on the same tailnet, configure `[[peers]]` in `host.toml` with a URL and token (inline, file, or shell command).
+- **Transparent proxying.** Terminal I/O, kill, resume, dismiss, and launch all forward through the hub. The browser doesn't know which sessions are local and which are remote.
+- **Fault tolerance.** Each spoke connection is independent. A slow or dead spoke never blocks the hub or other spokes.
+
+### Project hub
+
+Clicking a project name in the sidebar opens a dedicated overview page. Sessions are grouped by host and working directory, with a topology breadcrumb showing the full chain. Per-folder launch buttons route new sessions to the correct machine.
+
+### Home page
+
+The home page shows host cards for every connected machine, with status indicators, session counts, and per-host launch buttons. Offline tailnet devices that look like gmux instances appear as dimmed cards so you know what's out there.
+
+### CLI lifecycle
+
+- **`gmuxd start`** backgrounds via `setsid` + re-exec, logs to `~/.local/state/gmux/gmuxd.log`, waits for health, prints PID.
+- **`gmuxd run`** runs in the foreground for systemd, Docker, or debugging.
+- **`gmuxd restart`** is an alias for `start` (the old instance is replaced automatically).
+- **`gmuxd status`** shows session counts (local/remote/dead), per-peer connection state with error reasons, and the Tailscale URL.
+- **`gmuxd stop`**, **`gmuxd auth`**, **`gmuxd remote`**, **`gmuxd version`** unchanged.
+
+### Terminal and configuration
+
+- **Three config files.** `host.toml` (daemon behavior, TOML), `settings.jsonc` (terminal options, keybinds, UI prefs), and `theme.jsonc` (color palette, Windows Terminal theme compatible). All optional, partial configs deep-merge over defaults, settings/theme apply on browser refresh without restarting the daemon.
+- **Platform-aware keybinds.** Linux: Ctrl+Alt+T/N/W send the terminal shortcuts the browser steals. Mac: Cmd+Left/Right for Home/End, Cmd+Backspace for delete-to-start, Cmd+K for clear.
+- **OSC 52 clipboard.** Terminal apps that write to the clipboard (vim, tmux) now work in the browser.
+- **Session replay.** Replaced the ring buffer with a virtual terminal emulator. TUI state, colors, and cursor position are preserved exactly on reconnect.
+- **Resize.** The terminal claims viewport dimensions on every session connect. Browser-driven resize uses echo-gated throttling to remove lag.
+
+### Security
+
+- **Unix socket for local IPC.** CLI-to-daemon communication uses `~/.local/state/gmux/gmuxd.sock` (filesystem permissions, no network exposure).
+- **Token auth always required on TCP.** No option to disable it.
+- **Tailscale identity verification.** The tsnet listener checks every connection against the cryptographic WhoIs identity. The node owner is auto-whitelisted; additional accounts go in the `allow` list.
+- **Strict config validation.** Unknown keys, malformed allow entries, and duplicate peer names are rejected at startup.
+
+### Breaking changes from v0.x
+
+- **Config file renamed.** `config.toml` → `host.toml`. The `[network]` section is removed; bind address is controlled by the `GMUXD_LISTEN` environment variable.
+- **Keybinds moved.** `keybinds.jsonc` is now a `"keybinds"` array inside `settings.jsonc`.
+- **CLI subcommands.** `gmuxd` (bare) prints help. Use `gmuxd start` to background or `gmuxd run` for foreground.
+- **TCP auth required.** All TCP connections require a bearer token. The prior unauthenticated localhost exception is removed.
+
+### All changes
+
+<details>
+<summary>Expand full change list</summary>
+
+**Features**
+- Server-side project management with VCS remote grouping ([#41](https://github.com/gmuxapp/gmux/pull/41), [#50](https://github.com/gmuxapp/gmux/pull/50))
+- Unix socket IPC and mandatory TCP auth ([#43](https://github.com/gmuxapp/gmux/pull/43))
+- Status indicator redesign: unread badges, activity rings, agent-aware ([#46](https://github.com/gmuxapp/gmux/pull/46))
+- Explicit keymap system with `macCommandIsCtrl` ([#56](https://github.com/gmuxapp/gmux/pull/56))
+- Config layout: `host.toml`, `settings.jsonc`, `theme.jsonc` ([#64](https://github.com/gmuxapp/gmux/pull/64))
+- Hub protocol: peer aggregation, action routing, WS proxying ([#74](https://github.com/gmuxapp/gmux/pull/74))
+- Click "outdated" badge to restart session ([#77](https://github.com/gmuxapp/gmux/pull/77))
+- Project hub page with per-host/folder layout ([#86](https://github.com/gmuxapp/gmux/pull/86))
+- Terminal defaults and keybind handling improvements ([#91](https://github.com/gmuxapp/gmux/pull/91))
+- Per-host launch buttons on home page ([#97](https://github.com/gmuxapp/gmux/pull/97))
+- CLI lifecycle: `start`/`run`/`restart`/`status` ([#98](https://github.com/gmuxapp/gmux/pull/98))
+- Tailscale auto-discovery via WatchIPNBus ([#100](https://github.com/gmuxapp/gmux/pull/100))
+- OSC 52 clipboard support ([#48](https://github.com/gmuxapp/gmux/pull/48))
+
+**Fixes**
+- Mobile link taps deferred past scroll events ([#44](https://github.com/gmuxapp/gmux/pull/44))
+- Ring buffer: flush bare CR, trim to frame-start on wrap ([#51](https://github.com/gmuxapp/gmux/pull/51))
+- Virtual terminal for session replay ([#68](https://github.com/gmuxapp/gmux/pull/68))
+- Claim terminal resize on session select ([#78](https://github.com/gmuxapp/gmux/pull/78))
+- Responsive terminal resize with echo-gated throttle ([#81](https://github.com/gmuxapp/gmux/pull/81))
+- SIGHUP for process termination, SIGKILL escalation for fish ([#86](https://github.com/gmuxapp/gmux/pull/86))
+
+</details>
+
+---
+
 ## v0.8.0
 
 - **Fixed dev instances unable to connect to their backend.** The `gmux` CLI
