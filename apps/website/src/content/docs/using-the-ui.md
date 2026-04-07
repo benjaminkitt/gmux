@@ -34,15 +34,16 @@ Connected peers show launch buttons for each configured adapter, just like the l
 
 ### Projects
 
-Sessions don't appear in the sidebar until you add a project. The first time you open the dashboard, click **Add project** to choose which directories to track. gmuxd discovers directories that have running sessions and offers them as suggestions. Once a project is added, any session launched in that directory appears automatically.
+Sessions don't appear in the sidebar until you add a project. The first time you open the dashboard, click the **+** button to launch a session. gmux creates a default "home" project that catches sessions started from your home directory. As you work in more repositories, use **Manage projects** to organize sessions by repo.
 
 Click a **project name** to open the [project hub](#project-hub), an overview of all sessions in that project grouped by host and working directory. The active project is highlighted in the sidebar.
 
-You can manage projects at any time via the **Manage projects** button at the bottom of the sidebar. A badge shows when there are running sessions in directories that aren't part of any project yet.
+Each project has **match rules** that determine which sessions belong to it. Rules can match by filesystem path (`~/dev/gmux` and its subdirectories) or by git remote URL (grouping clones across machines). See [`projects.json`](/reference/projects-json/) for the full reference on rules, precedence, and advanced options like exact matching and host scoping.
 
-Two clones of the same repo (different paths, different machines) are grouped under one project as long as they share a git remote URL. Projects without remotes match by filesystem path.
+You can manage projects at any time via the **Manage projects** button at the bottom of the sidebar. A badge shows when there are running sessions that don't match any project yet. The modal has two sections:
 
-Project state is stored in `~/.local/state/gmux/projects.json`. You can edit this file directly; changes are picked up on the next daemon restart.
+- **Your projects**: configured projects with their match rules. Drag to reorder, click **×** to remove.
+- **Discovered**: directories with running sessions that don't match any project. Type to filter, or enter a path to add directly.
 
 ### Sessions
 
