@@ -22,8 +22,10 @@ fi
 
 # ── Extract summary ──
 
-# RELEASE_NOTES.md has the summary above a --- separator, then the PR list.
-summary=$(sed '/^---$/,$d' RELEASE_NOTES.md)
+# RELEASE_NOTES.md has the highlights prose above a `<!-- highlights-end -->`
+# marker, then the generated bullet list. The marker is invisible in
+# rendered markdown; we stop reading at it.
+summary=$(sed '/<!-- highlights-end -->/,$d' RELEASE_NOTES.md)
 # Trim trailing blank lines.
 summary=$(echo "$summary" | sed -e :a -e '/^\n*$/{$d;N;ba}')
 
@@ -48,24 +50,36 @@ fi
 header="<@&${role_id}>
 ## gmux ${VERSION}"
 footer="[See the changelog for details.](https://gmux.app/changelog)"
-overhead=$(( ${#header} + ${#footer} + 4 ))
 
-# Condense the summary if the full message would exceed Discord's 2000 char limit.
-if [[ $(( ${#summary} + overhead )) -gt 2000 ]]; then
-  max_chars=$(( 2000 - overhead ))
-  echo "Summary too long for Discord ($(( ${#summary} + overhead )) chars), condensing..."
-  summary=$(echo "$summary" | "$(dirname "$0")/summarize.sh" --condense "$max_chars")
-fi
-
-message="${header}
+if [[ -n "$summary" ]]; then
+  message="${header}
 
 ${summary}
 
 ${footer}"
+else
+  message="${header}
 
-# Hard truncation as a last resort.
+${footer}"
+fi
+
+# Discord's message limit is 2000 chars. Truncate the summary (not the
+# header or footer) so the link always survives.
 if [[ ${#message} -gt 2000 ]]; then
-  message="${message:0:1997}..."
+  overhead=$(( ${#header} + ${#footer} + 6 ))
+  max_summary=$(( 2000 - overhead - 4 ))  # 4 for trailing "...\n"
+  if (( max_summary > 0 )); then
+    summary="${summary:0:max_summary}..."
+    message="${header}
+
+${summary}
+
+${footer}"
+  else
+    message="${header}
+
+${footer}"
+  fi
 fi
 
 payload=$(jq -n \
