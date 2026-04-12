@@ -4,8 +4,8 @@
 # The main checkout uses fixed, well-known values (port 8791, hostname
 # gmux-dev) so tailscale auth state is preserved across restarts.
 #
-# Grove worktrees (.grove/<name>) get isolated ports, socket dirs,
-# state dirs, and tailscale hostnames derived from the worktree name,
+# Linked git worktrees get isolated ports, socket dirs,
+# state dirs, and tailscale hostnames derived from the worktree path,
 # so multiple instances run simultaneously without collisions.
 #
 # Usage: ./scripts/dev-server.sh
@@ -18,29 +18,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEV_BIN_DIR="$ROOT/bin"
 
-# ── Instance identity ──
-#
-# Grove worktrees live at .grove/<name> under the main repo. Detect
-# this by checking if the parent directory is named ".grove".
+# shellcheck source=./worktree-env.sh
+source "$ROOT/scripts/worktree-env.sh"
+gmux_load_worktree_env "$ROOT"
 
-if [[ "$(basename "$(dirname "$ROOT")")" == ".grove" ]]; then
-  # Grove worktree: derive isolated values from the worktree name.
-  INSTANCE_NAME="$(basename "$ROOT")"
-  INSTANCE_HASH=$(printf '%s' "$ROOT" | cksum | awk '{print $1}')
-  DEV_PORT=$((8800 + INSTANCE_HASH % 100))
-  DEV_VITE_PORT=$((DEV_PORT + 100))
-  DEV_SOCKET_DIR="/tmp/gmux-dev-$INSTANCE_NAME"
-  DEV_STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/gmux-dev-$INSTANCE_NAME"
-  DEV_TS_HOSTNAME="gmux-dev-$INSTANCE_NAME"
-else
-  # Main checkout: fixed values, preserves existing tailscale auth.
-  INSTANCE_NAME="gmux-dev"
-  DEV_PORT=8791
-  DEV_VITE_PORT=5173
-  DEV_SOCKET_DIR="/tmp/gmux-dev-sessions"
-  DEV_STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/gmux-dev"
-  DEV_TS_HOSTNAME="gmux-dev"
-fi
+INSTANCE_NAME="$GMUX_DEV_INSTANCE_NAME"
+DEV_PORT="$GMUX_DEV_PORT"
+DEV_VITE_PORT="$GMUX_DEV_VITE_PORT"
+DEV_SOCKET_DIR="$GMUX_DEV_SOCKET_DIR"
+DEV_STATE_DIR="$GMUX_DEV_STATE_DIR"
+DEV_TS_HOSTNAME="$GMUX_DEV_TAILSCALE_HOSTNAME"
 
 # ── Prepare directories and config ──
 
@@ -66,6 +53,8 @@ export PI_CODING_AGENT_DIR="$DEV_STATE_DIR/pi-agent"
 
 echo "→ Installing node dependencies..."
 (cd "$ROOT" && pnpm install --frozen-lockfile)
+
+mkdir -p "$DEV_BIN_DIR"
 
 echo "→ Building Go binaries..."
 (cd "$ROOT/cli/gmux" && go build -o "$DEV_BIN_DIR/gmux-dev" ./cmd/gmux)
